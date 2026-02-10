@@ -5,7 +5,7 @@
 #   Services (orthanc, mercure, monitoring): start, stop, restart, status, logs, shell
 #   Build artifacts (ai): build, test, push, clean, info
 
-.PHONY: help status start-all stop-all restart-all \
+.PHONY: help status urls start-all stop-all restart-all \
         orthanc-start orthanc-stop orthanc-restart orthanc-status orthanc-logs orthanc-shell orthanc-validate \
         mercure-start mercure-stop mercure-restart mercure-status mercure-logs mercure-shell \
         monitoring-start monitoring-stop monitoring-restart monitoring-status monitoring-logs \
@@ -29,6 +29,7 @@ help:
 	@printf "\n"
 	@printf "$(BOLD)Global Commands:$(RESET)\n"
 	@printf "  make status            Show status of all services\n"
+	@printf "  make urls              Show all service URLs\n"
 	@printf "  make start-all         Start all components\n"
 	@printf "  make stop-all          Stop all components\n"
 	@printf "  make restart-all       Restart all components\n"
@@ -117,6 +118,23 @@ restart-all: stop-all start-all
 
 ps:
 	@docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus" --filter "name=monitoring" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+urls:
+	@printf "$(BOLD)$(CYAN)Service URLs$(RESET)\n"
+	@printf "\n"
+	@printf "$(GREEN)Orthanc$(RESET)\n"
+	@printf "  Dashboard:     http://localhost:9010\n"
+	@printf "  Web/API:       http://localhost:9011\n"
+	@printf "  OHIF Viewer:   http://localhost:9012\n"
+	@printf "  DICOM:         localhost:4242 (C-STORE)\n"
+	@printf "\n"
+	@printf "$(GREEN)Mercure$(RESET)\n"
+	@printf "  Web UI:        http://localhost:9020\n"
+	@printf "\n"
+	@printf "$(GREEN)Monitoring$(RESET)\n"
+	@printf "  Workflow UI:   http://localhost:9030\n"
+	@printf "  Grafana:       http://localhost:9032\n"
+	@printf "  Prometheus:    http://localhost:9033\n"
 
 # =============================================================================
 # ORTHANC - DICOM PACS Server
