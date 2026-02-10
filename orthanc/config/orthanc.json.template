@@ -73,10 +73,10 @@
     "DicomCheckModalityHost" : false,
   
     "DicomModalities" : {
-        "MERCURE" : [ "${MODALITY_MERCURE_AET}", "${MODALITY_MERCURE_HOST}", ${MODALITY_MERCURE_PORT} ],
-        "LPCHROUTER" : [ "${MODALITY_LPCHROUTER_AET}", "${MODALITY_LPCHROUTER_HOST}", ${MODALITY_LPCHROUTER_PORT} ],
-        "LPCHTROUTER" : [ "${MODALITY_LPCHTROUTER_AET}", "${MODALITY_LPCHTROUTER_HOST}", ${MODALITY_LPCHTROUTER_PORT} ],
-        "MODLINK" : [ "${MODALITY_MODLINK_AET}", "${MODALITY_MODLINK_HOST}", ${MODALITY_MODLINK_PORT} ]
+        "MERCURE" : [ "orthanc", "172.17.0.1", 11112 ],
+        "LPCHROUTER" : [ "LPCHROUTER", "10.50.133.21", 4000 ],
+        "LPCHTROUTER" : [ "LPCHTROUTER", "10.50.130.114", 4000 ],
+        "MODLINK" : [ "PSRTBONEAPP01", "10.251.201.59", 104 ]
     },
     "DicomModalitiesInDatabase" : true,
     "DicomEchoChecksFind" : false,
