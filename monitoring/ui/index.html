@@ -442,24 +442,56 @@
                         <table class="w-full text-sm">
                             <thead class="text-slate-500 text-xs uppercase bg-midnight-700/50">
                                 <tr>
-                                    <th class="px-5 py-3 text-left">Status</th>
                                     <th class="px-5 py-3 text-left">Patient</th>
                                     <th class="px-5 py-3 text-left">Study</th>
-                                    <th class="px-5 py-3 text-left">Date</th>
+                                    <th class="px-5 py-3 text-left">Pipeline</th>
                                     <th class="px-5 py-3 text-left">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-midnight-700">
                                 <template x-for="study in recentStudies" :key="study.id">
                                     <tr class="hover:bg-midnight-700/30 transition-colors">
-                                        <td class="px-5 py-3">
-                                            <span x-text="study.routingStatus === 'success' ? '✅' : 
-                                                         study.routingStatus === 'pending' ? '⏳' :
-                                                         study.routingStatus === 'failed' ? '❌' : '—'"></span>
-                                        </td>
                                         <td class="px-5 py-3 font-mono" x-text="study.patientName"></td>
-                                        <td class="px-5 py-3 text-slate-400 max-w-[200px] truncate" x-text="study.description || '—'"></td>
-                                        <td class="px-5 py-3 text-slate-500 font-mono text-xs" x-text="study.studyDate"></td>
+                                        <td class="px-5 py-3 text-slate-400 max-w-[200px] truncate">
+                                            <div x-text="study.description || '—'"></div>
+                                            <div class="text-xs text-slate-500 font-mono mt-1" x-text="study.studyDate"></div>
+                                        </td>
+                                        <td class="px-5 py-3">
+                                            <!-- Pipeline status chips -->
+                                            <template x-if="getWorkflowForStudy(study.id)">
+                                                <div class="flex items-center gap-1 text-xs flex-wrap">
+                                                    <!-- MERCURE -->
+                                                    <div class="flex items-center gap-1 px-2 py-1 rounded"
+                                                         :class="getWorkflowForStudy(study.id)?.stages?.mercure?.status === 'success' ? 'bg-neon-green/20 text-neon-green' : 
+                                                                 getWorkflowForStudy(study.id)?.stages?.mercure?.status === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
+                                                                 'bg-slate-700 text-slate-400'">
+                                                        <span>📤</span>
+                                                        <span x-text="getWorkflowForStudy(study.id)?.stages?.mercure?.status === 'success' ? '✓' : 
+                                                                      getWorkflowForStudy(study.id)?.stages?.mercure?.status === 'failed' ? '✗' : '—'"></span>
+                                                    </div>
+                                                    <span class="text-slate-600">→</span>
+                                                    <!-- AI Results -->
+                                                    <div class="flex items-center gap-1 px-2 py-1 rounded"
+                                                         :class="getWorkflowForStudy(study.id)?.stages?.ai_results?.status === 'received' ? 'bg-neon-blue/20 text-neon-blue' : 
+                                                                 'bg-slate-700 text-slate-400'">
+                                                        <span>🤖</span>
+                                                        <span x-text="getWorkflowForStudy(study.id)?.stages?.ai_results?.status === 'received' ? '✓' : '—'"></span>
+                                                    </div>
+                                                    <span class="text-slate-600">→</span>
+                                                    <!-- Destinations (Combined) -->
+                                                    <div class="flex items-center gap-1 px-2 py-1 rounded"
+                                                         :class="destinationStatus(getWorkflowForStudy(study.id)) === 'complete' ? 'bg-neon-green/20 text-neon-green' : 
+                                                                 destinationStatus(getWorkflowForStudy(study.id)) === 'partial' ? 'bg-amber-500/20 text-amber-400' : 
+                                                                 destinationStatus(getWorkflowForStudy(study.id)) === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
+                                                                 'bg-slate-700 text-slate-400'">
+                                                        <span>📮</span>
+                                                        <span x-text="destinationStatus(getWorkflowForStudy(study.id)) === 'complete' ? '✓' : 
+                                                                      destinationStatus(getWorkflowForStudy(study.id)) === 'partial' ? '⊘' : 
+                                                                      destinationStatus(getWorkflowForStudy(study.id)) === 'failed' ? '✗' : '—'"></span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </td>
                                         <td class="px-5 py-3">
                                             <div class="flex gap-2">
                                                 <button @click="viewStudy(study.id)"
@@ -622,69 +654,6 @@
                 <div x-show="trendData.length === 0" class="text-center text-slate-500 py-8">
                     <div class="text-4xl mb-2">📈</div>
                     No trend data available. Process some studies to see trends over time.
-                </div>
-            </div>
-        </section>
-        
-        <!-- Recent Workflows Section -->
-        <section class="mt-6 bg-midnight-800 rounded-xl border border-midnight-600 overflow-hidden">
-            <div class="px-5 py-4 border-b border-midnight-600">
-                <h2 class="font-semibold flex items-center gap-2">
-                    <span class="text-xl">🔄</span> Recent Studies Pipeline
-                </h2>
-            </div>
-            <div class="divide-y divide-midnight-700">
-                <template x-for="w in recentWorkflows" :key="w.study_id">
-                    <div class="px-5 py-3">
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <span class="font-mono text-xs text-slate-500" x-text="w.study_id.substring(0, 8)"></span>
-                                <span class="ml-2 text-sm" x-text="w.patient_name || 'Unknown'"></span>
-                            </div>
-                            <span class="text-xs text-slate-500" x-text="w.created_at ? new Date(w.created_at).toLocaleString() : ''"></span>
-                        </div>
-                        <!-- Pipeline Status -->
-                        <div class="flex items-center gap-1 text-xs flex-wrap">
-                            <!-- MERCURE -->
-                            <div class="flex items-center gap-1 px-2 py-1 rounded cursor-pointer hover:ring-1 hover:ring-neon-purple/50"
-                                 :class="w.stages?.mercure?.status === 'success' ? 'bg-neon-green/20 text-neon-green' : 
-                                         w.stages?.mercure?.status === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
-                                         'bg-slate-700 text-slate-400'"
-                                 @click="mercureStatus.available && viewMercureStatus(w)"
-                                 :title="mercureStatus.available ? 'Click to view Mercure details' : 'Mercure not configured'">
-                                <span>📤</span> MERCURE
-                                <span x-show="mercureStatus.available && w.stages?.mercure?.status === 'success'" class="text-neon-purple">🔍</span>
-                            </div>
-                            <span class="text-slate-600">→</span>
-                            <!-- AI Results -->
-                            <div class="flex items-center gap-1 px-2 py-1 rounded"
-                                 :class="w.stages?.ai_results?.status === 'received' ? 'bg-neon-blue/20 text-neon-blue' : 
-                                         'bg-slate-700 text-slate-400'">
-                                <span>🤖</span> AI
-                                <span x-text="w.stages?.ai_results?.status === 'received' ? '✓' : '⏳'"></span>
-                            </div>
-                            <span class="text-slate-600">→</span>
-                            <!-- LPCH -->
-                            <div class="flex items-center gap-1 px-2 py-1 rounded"
-                                 :class="w.stages?.lpch?.status === 'success' ? 'bg-neon-green/20 text-neon-green' : 
-                                         w.stages?.lpch?.status === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
-                                         'bg-slate-700 text-slate-400'">
-                                LPCH
-                                <span x-text="w.stages?.lpch?.status === 'success' ? '✓' : w.stages?.lpch?.status === 'failed' ? '✗' : '—'"></span>
-                            </div>
-                            <!-- MODLINK -->
-                            <div class="flex items-center gap-1 px-2 py-1 rounded"
-                                 :class="w.stages?.modlink?.status === 'success' ? 'bg-neon-green/20 text-neon-green' : 
-                                         w.stages?.modlink?.status === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
-                                         'bg-slate-700 text-slate-400'">
-                                MODLINK
-                                <span x-text="w.stages?.modlink?.status === 'success' ? '✓' : w.stages?.modlink?.status === 'failed' ? '✗' : '—'"></span>
-                            </div>
-                        </div>
-                    </div>
-                </template>
-                <div x-show="recentWorkflows.length === 0" class="px-5 py-8 text-center text-slate-500">
-                    No recent workflows
                 </div>
             </div>
         </section>
@@ -1441,6 +1410,24 @@ function dashboard() {
                 console.error('Failed to load routing stats:', e);
                 // Don't reset data on error - keep existing values
             }
+        },
+        
+        // Helper: Find workflow for a study by ID
+        getWorkflowForStudy(studyId) {
+            return this.recentWorkflows.find(w => w.study_id === studyId);
+        },
+        
+        // Helper: Determine destination status for a workflow
+        destinationStatus(workflow) {
+            if (!workflow) return 'none';
+            const lpch = workflow.stages?.lpch?.status;
+            const lpcht = workflow.stages?.lpcht?.status;
+            const modlink = workflow.stages?.modlink?.status;
+            
+            if (lpch === 'success' && lpcht === 'success' && modlink === 'success') return 'complete';
+            if (lpch === 'failed' || lpcht === 'failed' || modlink === 'failed') return 'failed';
+            if (lpch === 'success' || lpcht === 'success' || modlink === 'success') return 'partial';
+            return 'pending';
         },
 
         async loadTrends() {
