@@ -85,17 +85,28 @@ local function sendInstance(studyId, instanceId, destination)
             destination = destination,
             error = errorMsg,
         })
+        -- Record send failure in tracking database
+        if Tracker.sendAttempted then
+            Tracker.sendAttempted(studyId, destination, false, errorMsg)
+        end
     else
+        -- Send succeeded - result is the Orthanc job ID
+        local jobId = tostring(result)
         Log.info("Send succeeded", {
             studyId = studyId,
             destination = destination,
-            jobId = tostring(result),
+            jobId = jobId,
         })
-    end
-    
-    -- Record in tracking database
-    if Tracker.sendAttempted then
-        Tracker.sendAttempted(studyId, destination, success, errorMsg)
+        
+        -- Record send success in tracking database
+        if Tracker.sendAttempted then
+            Tracker.sendAttempted(studyId, destination, true, nil)
+        end
+        
+        -- Register the job ID for async polling of actual delivery status
+        if Tracker.registerPendingJob then
+            Tracker.registerPendingJob(jobId, studyId, destination)
+        end
     end
     
     return success, result

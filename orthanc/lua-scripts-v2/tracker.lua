@@ -149,6 +149,41 @@ function Tracker.sendAttempted(studyId, destination, success, errorMsg)
 end
 
 --
+-- Register a pending Orthanc job for async completion tracking
+-- Called after a successful send to register the job ID for polling
+--
+-- @param jobId: string - Orthanc job ID returned by SendToModality
+-- @param studyId: string - Orthanc study ID
+-- @param destination: string - Destination name
+--
+function Tracker.registerPendingJob(jobId, studyId, destination)
+    if not jobId or not studyId or not destination then
+        Log.warn("registerPendingJob missing parameters", {
+            jobId = jobId,
+            studyId = studyId,
+            destination = destination
+        })
+        return false
+    end
+    
+    local payload = {
+        job_id = tostring(jobId),
+        study_id = tostring(studyId),
+        destination = destination,
+    }
+    
+    local endpoint = "/track/job"
+    
+    Log.debug("Registering pending job", {
+        jobId = jobId,
+        studyId = studyId,
+        destination = destination
+    })
+    
+    return apiCall(endpoint, payload)
+end
+
+--
 -- Track when AI results are received back from MERCURE
 -- Called when we detect a study with "STANFORDAIDE" in SeriesDescription
 --
