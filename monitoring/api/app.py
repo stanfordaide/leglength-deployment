@@ -913,6 +913,16 @@ def get_funnel():
                 'status': 'success' if (stats['sent_to_mercure'] or 0) > 0 else 'neutral'
             },
             
+            # PROCESSING STAGE (Mercure) - Only received_at is trackable
+            {
+                'stage': 'PROCESSING',
+                'name': 'Received at Mercure',
+                'count': stats['mercure_received'] or 0,
+                'percent': pct(stats['mercure_received'] or 0, stats['sent_to_mercure'] or 1),
+                'base_count': stats['sent_to_mercure'] or 0,
+                'status': 'success' if (stats['mercure_received'] or 0) > 0 else 'waiting'
+            },
+            
             # OUTPUT STAGE
             {
                 'stage': 'OUTPUT',
