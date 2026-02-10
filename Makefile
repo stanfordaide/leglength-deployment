@@ -62,7 +62,7 @@ status:
 	@cd monitoring && docker compose ps 2>/dev/null || echo "  Not configured"
 	@echo ""
 	@echo "$(GREEN)AI Module:$(RESET)"
-	@docker images mercure-pediatric-leglength --format "  Image: {{.Repository}}:{{.Tag}} ({{.Size}})" 2>/dev/null || echo "  Not built"
+	@docker images stanfordaide/pediatric-leglength --format "  Image: {{.Repository}}:{{.Tag}} ({{.Size}})" 2>/dev/null || echo "  Not built"
 
 # =============================================================================
 # ALL COMPONENTS
@@ -126,7 +126,7 @@ setup-mercure:
 
 ai-build:
 	@echo "$(CYAN)Building AI module...$(RESET)"
-	@cd mercure-pediatric-leglength && docker build -t mercure-pediatric-leglength:latest .
+	@cd mercure-pediatric-leglength && docker build -t stanfordaide/pediatric-leglength:latest .
 	@echo "$(GREEN)AI module built successfully!$(RESET)"
 
 ai-test:
