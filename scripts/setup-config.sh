@@ -184,6 +184,26 @@ EOF
 echo -e "  ${GREEN}✓${NC} monitoring/.env created"
 
 # =============================================================================
+# Set Secure File Permissions
+# =============================================================================
+echo -e "${CYAN}Setting secure file permissions...${NC}"
+
+# Restrict config.env to owner only (contains secrets)
+chmod 600 "$REPO_ROOT/config.env"
+echo -e "  ${GREEN}✓${NC} config.env (600 - owner read/write only)"
+
+# Restrict generated .env files
+chmod 600 "$REPO_ROOT/orthanc/.env"
+echo -e "  ${GREEN}✓${NC} orthanc/.env (600)"
+
+chmod 600 "$REPO_ROOT/monitoring/.env"
+echo -e "  ${GREEN}✓${NC} monitoring/.env (600)"
+
+chmod 600 "$REPO_ROOT/mercure/config-generated/db.env"
+chmod 600 "$REPO_ROOT/mercure/config-generated/install.env"
+echo -e "  ${GREEN}✓${NC} mercure/config-generated/*.env (600)"
+
+# =============================================================================
 # Summary
 # =============================================================================
 echo ""

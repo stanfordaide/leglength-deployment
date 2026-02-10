@@ -238,6 +238,29 @@ cd monitoring/ui
 # Edit index.html, refresh browser
 ```
 
+## Security
+
+### File Permissions
+`make setup` automatically sets restrictive permissions (600) on all config files containing secrets:
+- `config.env` - Master config
+- `orthanc/.env` - Orthanc credentials
+- `monitoring/.env` - Monitoring credentials
+- `mercure/config-generated/*.env` - Mercure credentials
+
+### Best Practices
+- **Never commit** `config.env` or generated `.env` files (they're gitignored)
+- **Generate strong passwords**: `openssl rand -base64 24`
+- **Restrict server access** to trusted users only
+- **For production**: Consider using Docker secrets or a secrets manager (HashiCorp Vault)
+
+### What's Protected
+| File | Permissions | Contains |
+|------|-------------|----------|
+| `config.env` | 600 | All passwords |
+| `orthanc/.env` | 600 | Orthanc admin, DB passwords |
+| `monitoring/.env` | 600 | Grafana, DB passwords |
+| `mercure/config-generated/` | 600 | Mercure DB password |
+
 ## License
 
 Internal use only - Stanford AIDE Lab
