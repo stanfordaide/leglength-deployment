@@ -104,19 +104,15 @@ mercure-logs:
 	@cd mercure/docker && docker compose logs -f
 
 setup-mercure:
-	@echo "$(CYAN)Setting up Mercure...$(RESET)"
-	@if [ ! -f mercure/config-generated/install.env ]; then \
-		echo "$(RED)Run 'make setup' first to generate Mercure config$(RESET)"; \
-		exit 1; \
-	fi
+	@echo "$(CYAN)To install Mercure, run:$(RESET)"
 	@echo ""
-	@echo "Run the following commands to install Mercure:"
+	@echo "  make mercure-install"
 	@echo ""
-	@echo "  cd mercure"
-	@echo "  source config-generated/install.env"
-	@echo "  sudo -E ./install_rhel_v2.sh -y"
-	@echo ""
-	@echo "The -E flag preserves the MERCURE_PASSWORD environment variable."
+
+# Install Mercure using password from config.env
+mercure-install:
+	@chmod +x scripts/install-mercure.sh
+	@./scripts/install-mercure.sh -y
 
 # =============================================================================
 # AI MODULE

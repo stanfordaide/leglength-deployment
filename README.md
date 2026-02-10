@@ -64,14 +64,10 @@ This single `config.env` file controls ALL passwords, ports, and settings for ev
 make monitoring-start
 
 # 2. Start Orthanc (DICOM server)
-cd orthanc && make setup && make start
-cd ..
+cd orthanc && make setup && make start && cd ..
 
-# 3. Install Mercure (job dispatcher)
-cd mercure
-source config-generated/install.env
-sudo -E ./install_rhel_v2.sh -y
-cd ..
+# 3. Install Mercure (uses password from config.env automatically)
+make mercure-install
 
 # 4. Build AI Module
 make ai-build
