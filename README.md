@@ -40,69 +40,56 @@ Complete deployment package for the pediatric leg length measurement AI pipeline
 - **RAM**: 16GB+ recommended
 - **GPU**: Optional, improves AI inference speed
 
-## Setup Order
+## Quick Start
 
-Components should be started in this order due to dependencies:
-
-```
-1. Monitoring  →  2. Orthanc  →  3. Mercure  →  4. AI Module
-```
-
-### 1. Monitoring (Event Sink)
+### 1. Configure Everything (Once)
 
 ```bash
-cd monitoring
-make setup          # Creates .env and data directories
-# Edit .env if needed
-make start
+# Create master config file
+make init
+
+# Edit config.env with your passwords and settings
+nano config.env
+
+# Generate all component configs
+make setup
 ```
 
-**Access:**
-- Workflow UI: http://localhost:9030
-- Workflow API: http://localhost:9031
-- Grafana: http://localhost:9032 (`admin` / `admin123`)
-- Prometheus: http://localhost:9033
+This single `config.env` file controls ALL passwords, ports, and settings for every component.
 
-### 2. Orthanc (DICOM Server)
+### 2. Start Components (In Order)
 
 ```bash
-cd orthanc
-make menu           # Interactive setup wizard (recommended)
-# OR for scripted setup:
-make setup DICOM_STORAGE=/path/to/dicom POSTGRES_STORAGE=/path/to/db
-make start
-```
+# 1. Start Monitoring (event sink - must be first)
+make monitoring-start
 
-**Access:**
-- Operator Dashboard: http://localhost:9010
-- Orthanc Web UI: http://localhost:9011 (`orthanc_admin` / `helloaide123`)
-- OHIF Viewer: http://localhost:9012
-- DICOM Port: 4242
+# 2. Start Orthanc (DICOM server)
+cd orthanc && make setup && make start
+cd ..
 
-### 3. Mercure (Job Dispatcher)
-
-```bash
+# 3. Install Mercure (job dispatcher)
 cd mercure
-sudo ./install_rhel_v2.sh -y    # Full installation
+source config-generated/install.env
+sudo -E ./install_rhel_v2.sh -y
+cd ..
 
-# After install, services are at /opt/mercure
-# Manage with:
-sudo /opt/mercure/mercure-manager.sh status
-sudo /opt/mercure/mercure-manager.sh start
-sudo /opt/mercure/mercure-manager.sh stop
+# 4. Build AI Module
+make ai-build
 ```
 
-**Access:**
-- Mercure Web UI: http://localhost:8000
+### Access URLs
 
-### 4. AI Module (Docker Image)
+After setup, access services at (ports from your `config.env`):
 
-```bash
-# From repo root
-make ai-build       # Builds mercure-pediatric-leglength:latest
-```
-
-The AI module runs as a Docker container managed by Mercure. Register it in Mercure's module configuration.
+| Service | Default URL |
+|---------|-------------|
+| Orthanc Operator UI | http://localhost:9010 |
+| Orthanc Web/API | http://localhost:9011 |
+| OHIF Viewer | http://localhost:9012 |
+| Mercure Web UI | http://localhost:9020 |
+| Workflow Dashboard | http://localhost:9030 |
+| Grafana | http://localhost:9032 |
+| DICOM Port | 4242 |
 
 ## Quick Commands
 

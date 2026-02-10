@@ -13,6 +13,10 @@ RESET := \033[0m
 help:
 	@echo "$(CYAN)Pediatric Leg Length AI - Deployment$(RESET)"
 	@echo ""
+	@echo "$(GREEN)Getting Started:$(RESET)"
+	@echo "  make init            - Create config.env from template"
+	@echo "  make setup           - Generate all component configs from config.env"
+	@echo ""
 	@echo "$(GREEN)Master Commands:$(RESET)"
 	@echo "  make status          - Show status of all services"
 	@echo "  make start-all       - Start all components"
@@ -32,13 +36,6 @@ help:
 	@echo "  make monitoring-start - Start monitoring stack"
 	@echo "  make monitoring-stop  - Stop monitoring stack"
 	@echo "  make monitoring-logs  - Show monitoring logs"
-	@echo ""
-	@echo "$(GREEN)Setup:$(RESET)"
-	@echo "  make setup           - Initial setup for all components"
-	@echo "  make setup-orthanc   - Setup Orthanc only"
-	@echo "  make setup-mercure   - Setup Mercure only"
-	@echo "  make setup-ai        - Setup AI module only"
-	@echo "  make setup-monitoring - Setup monitoring only"
 
 # =============================================================================
 # STATUS
@@ -108,7 +105,18 @@ mercure-logs:
 
 setup-mercure:
 	@echo "$(CYAN)Setting up Mercure...$(RESET)"
-	@echo "Please follow Mercure's installation instructions in mercure/README.md"
+	@if [ ! -f mercure/config-generated/install.env ]; then \
+		echo "$(RED)Run 'make setup' first to generate Mercure config$(RESET)"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Run the following commands to install Mercure:"
+	@echo ""
+	@echo "  cd mercure"
+	@echo "  source config-generated/install.env"
+	@echo "  sudo -E ./install_rhel_v2.sh -y"
+	@echo ""
+	@echo "The -E flag preserves the MERCURE_PASSWORD environment variable."
 
 # =============================================================================
 # AI MODULE
@@ -148,27 +156,40 @@ setup-monitoring:
 	@cd monitoring && make setup
 
 # =============================================================================
-# SETUP ALL
+# SETUP - Master Configuration
 # =============================================================================
 
-setup: 
-	@echo "$(CYAN)====== INITIAL SETUP ======$(RESET)"
-	@echo ""
-	@echo "Setting up Orthanc..."
-	@cd orthanc && ([ -f .env ] || cp config/env.template .env) && echo "  ✓ Orthanc .env created"
-	@echo ""
-	@echo "Setting up Monitoring..."
-	@cd monitoring && ([ -f .env ] || cp env.template .env) && echo "  ✓ Monitoring .env created"
-	@echo ""
-	@echo "$(GREEN)Setup complete!$(RESET)"
-	@echo ""
-	@echo "$(YELLOW)Next steps:$(RESET)"
-	@echo "  1. Edit orthanc/.env to configure DICOM settings"
-	@echo "  2. Edit monitoring/.env to configure URLs"
-	@echo "  3. Build AI module: make ai-build"
-	@echo "  4. Start services: make start-all"
-	@echo ""
-	@echo "See README.md for detailed configuration instructions."
+# Create config.env from template
+init:
+	@if [ -f config.env ]; then \
+		echo "$(YELLOW)config.env already exists. Remove it first to reinitialize.$(RESET)"; \
+	else \
+		cp config.env.template config.env; \
+		echo "$(GREEN)Created config.env$(RESET)"; \
+		echo ""; \
+		echo "$(YELLOW)Next steps:$(RESET)"; \
+		echo "  1. Edit config.env with your passwords and settings"; \
+		echo "  2. Run: make setup"; \
+	fi
+
+# Generate all component configs from master config.env
+setup:
+	@chmod +x scripts/setup-config.sh
+	@./scripts/setup-config.sh
+
+# Validate config without generating
+setup-check:
+	@echo "$(CYAN)Checking configuration...$(RESET)"
+	@if [ ! -f config.env ]; then \
+		echo "$(RED)config.env not found. Run 'make init' first.$(RESET)"; \
+		exit 1; \
+	fi
+	@source config.env && \
+	if [[ "$$ORTHANC_ADMIN_PASS" == CHANGE_ME* ]]; then \
+		echo "$(RED)Please update passwords in config.env$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Configuration looks good!$(RESET)"
 
 # =============================================================================
 # UTILITIES
