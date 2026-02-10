@@ -79,12 +79,13 @@ stop-all: monitoring-stop mercure-stop orthanc-stop
 # =============================================================================
 
 orthanc-start:
-	@echo "$(CYAN)Starting Orthanc...$(RESET)"
-	@cd orthanc && docker compose up -d
+	@echo "$(CYAN)Starting Orthanc (full setup)...$(RESET)"
+	@cd orthanc && sudo make setup && sudo make start && sudo make seed-modalities
+	@echo "$(GREEN)Orthanc started!$(RESET)"
 
 orthanc-stop:
 	@echo "$(YELLOW)Stopping Orthanc...$(RESET)"
-	@cd orthanc && docker compose down
+	@cd orthanc && sudo docker compose down
 
 orthanc-logs:
 	@cd orthanc && docker compose logs -f
@@ -100,18 +101,17 @@ setup-orthanc:
 # MERCURE
 # =============================================================================
 
-mercure-install:
-	@echo "$(CYAN)Installing Mercure...$(RESET)"
-	@chmod +x scripts/install-mercure.sh
-	@./scripts/install-mercure.sh -y
+mercure-install: mercure-start
 
 mercure-start:
-	@echo "$(CYAN)Starting Mercure...$(RESET)"
-	@cd mercure/docker && docker compose up -d
+	@echo "$(CYAN)Starting Mercure (full install)...$(RESET)"
+	@chmod +x scripts/install-mercure.sh
+	@./scripts/install-mercure.sh -y
+	@echo "$(GREEN)Mercure started!$(RESET)"
 
 mercure-stop:
 	@echo "$(YELLOW)Stopping Mercure...$(RESET)"
-	@cd mercure/docker && docker compose down
+	@cd /opt/mercure && sudo docker compose down
 
 mercure-logs:
 	@cd mercure/docker && docker compose logs -f
@@ -238,8 +238,8 @@ clean-all:
 	@echo "  nano config.env"
 	@echo "  make setup"
 	@echo "  make monitoring-start"
-	@echo "  cd orthanc && sudo make setup && sudo make start && sudo make seed-modalities && cd .."
-	@echo "  make mercure-install"
+	@echo "  make orthanc-start"
+	@echo "  make mercure-start"
 	@echo "  make ai-build"
 
 # Show all docker containers related to this deployment
