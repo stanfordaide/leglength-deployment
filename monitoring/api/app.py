@@ -928,8 +928,8 @@ def get_funnel():
                 'stage': 'OUTPUT',
                 'name': 'AI Results Back to Orthanc',
                 'count': ai_received,
-                'percent': pct(ai_received, stats['mercure_completed'] or 1),
-                'base_count': stats['mercure_completed'] or 0,
+                'percent': pct(ai_received, stats['mercure_received'] or 1),
+                'base_count': stats['mercure_received'] or 0,
                 'status': 'success' if ai_received > 0 else 'waiting'
             },
             {
