@@ -1336,19 +1336,20 @@ def sync_workflows_from_mercure():
         workflow_cur = workflow_conn.cursor()
         
         # Query Mercure for all processed series and their study associations
+        # Mercure schema: dicom_series has study info, tasks tracks processing
         bookkeeper_cur.execute("""
             SELECT DISTINCT 
                 ds.study_uid,
                 ds.series_uid,
-                ds.study_date,
-                ds.patient_name,
-                ds.study_description,
-                MIN(se.time) as first_event_time,
-                MAX(se.time) as last_event_time
+                ds.tag_patientname,
+                ds.tag_studydescription,
+                ds.time as received_time,
+                MAX(t.time) as last_task_time
             FROM dicom_series ds
-            LEFT JOIN series_events se ON ds.series_uid = se.series_uid
-            GROUP BY ds.study_uid, ds.series_uid, ds.study_date, 
-                     ds.patient_name, ds.study_description
+            LEFT JOIN tasks t ON ds.study_uid = t.study_uid
+            WHERE ds.study_uid IS NOT NULL
+            GROUP BY ds.study_uid, ds.series_uid, ds.tag_patientname, 
+                     ds.tag_studydescription, ds.time
             ORDER BY ds.study_uid
         """)
         
@@ -1394,7 +1395,7 @@ def sync_workflows_from_mercure():
                     continue
                 
                 orthanc_study_data = resp.json()
-                patient_name = orthanc_study_data.get('PatientMainDicomTags', {}).get('PatientName', series_record['patient_name'])
+                patient_name = orthanc_study_data.get('PatientMainDicomTags', {}).get('PatientName', series_record['tag_patientname'])
                 
             except requests.RequestException:
                 continue  # Can't reach Orthanc, skip this study
@@ -1421,11 +1422,11 @@ def sync_workflows_from_mercure():
                 study_id,
                 study_uid,
                 patient_name,
-                series_record['study_description'],
-                series_record['first_event_time'],  # When sent to Mercure
-                True,  # Assume success if it's in Mercure
-                True,  # Assume AI ran if there are series events
-                series_record['last_event_time'],   # Last event time as "AI results"
+                series_record['tag_studydescription'],
+                series_record['received_time'],     # When received in Mercure
+                True,                                # Assume success if it's in Mercure
+                True,                                # Assume AI ran if there are tasks
+                series_record['last_task_time'],    # Last task time as "AI results"
                 now,
                 now
             ))
