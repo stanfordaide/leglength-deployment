@@ -39,12 +39,11 @@ services:
       # Keep old scripts available for rollback
       - ./lua-scripts:/etc/orthanc/lua:ro
       - orthanc-storage:/var/lib/orthanc/db
-    env_file: ./.env
     environment:
       - ORTHANC_NAME=${ORTHANC_AET:-ORTHANC_LPCH}
       - TZ=${TZ:-America/Los_Angeles}
       # Lua scripts use this to call the workflow-api
-      - WORKFLOW_API_URL=${WORKFLOW_API_URL}
+      - WORKFLOW_API_URL=${WORKFLOW_API_URL:-http://172.17.0.1:9031}
     depends_on:
       orthanc-db:
         condition: service_healthy
