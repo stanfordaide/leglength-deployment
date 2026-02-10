@@ -24,14 +24,13 @@ ORTHANC_AET ?= ORTHANC_LPCH
 help:
 	@echo "🏥 ORTHANC MANAGEMENT"
 	@echo ""
-	@echo "GETTING STARTED"
-	@echo "  make menu                   ⭐ Interactive menu (recommended)"
-	@echo "  make setup                  Direct setup wizard"
-	@echo "  make quick-setup            Quick setup with defaults"
+	@echo "GETTING STARTED (after 'make setup' at repo root)"
+	@echo "  make setup                  Create directories from .env (safe, keeps data)"
+	@echo "  make start                  Start services"
 	@echo ""
-	@echo "SETUP"
-	@echo "  make setup DICOM_STORAGE=/path POSTGRES_STORAGE=/path"
-	@echo "                              Setup with custom paths"
+	@echo "ADVANCED SETUP"
+	@echo "  make setup-wizard           Interactive wizard (custom paths, fresh install)"
+	@echo "  make menu                   Full interactive menu"
 	@echo ""
 	@echo "SERVICE MANAGEMENT"
 	@echo "  make start                  Start all services"
@@ -74,10 +73,10 @@ help:
 	@echo "  make uninstall"
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# INTERACTIVE MENU (Recommended)
+# INTERACTIVE MENU
 # ─────────────────────────────────────────────────────────────────────────────────
 
-# Full interactive menu - manage everything from here
+# Full interactive menu (for advanced options: custom paths, fresh install, backup/restore)
 menu:
 	@chmod +x setup.sh
 	@./setup.sh
@@ -86,8 +85,34 @@ menu:
 # SETUP
 # ─────────────────────────────────────────────────────────────────────────────────
 
-# Interactive setup (shows options when existing install detected)
+# Simple setup: create directories from .env (NEVER deletes data)
+# Use this after running 'make setup' at the repo root
 setup:
+	@echo "🏥 ORTHANC SETUP"
+	@echo ""
+	@if [ ! -f .env ]; then \
+		echo "❌ .env not found!"; \
+		echo "   Run 'make setup' from repo root first, or copy from template:"; \
+		echo "   cp config/env.template .env"; \
+		exit 1; \
+	fi
+	@echo "📋 Configuration:"
+	@grep -E "^(DICOM_STORAGE|POSTGRES_STORAGE|ORTHANC_AET)=" .env | sed 's/^/   /'
+	@echo ""
+	@echo "📁 Creating directories (if needed)..."
+	@. ./.env && mkdir -p "$$DICOM_STORAGE" 2>/dev/null && echo "   ✅ $$DICOM_STORAGE" || echo "   ⚠️  Need sudo for $$DICOM_STORAGE"
+	@. ./.env && mkdir -p "$$POSTGRES_STORAGE" 2>/dev/null && echo "   ✅ $$POSTGRES_STORAGE" || echo "   ⚠️  Need sudo for $$POSTGRES_STORAGE"
+	@echo ""
+	@echo "🔐 Setting permissions..."
+	@. ./.env && (chown -R 1000:1000 "$$DICOM_STORAGE" 2>/dev/null || sudo chown -R 1000:1000 "$$DICOM_STORAGE" 2>/dev/null || echo "   ⚠️  Could not set DICOM_STORAGE ownership")
+	@. ./.env && (chown -R 999:999 "$$POSTGRES_STORAGE" 2>/dev/null || sudo chown -R 999:999 "$$POSTGRES_STORAGE" 2>/dev/null || echo "   ⚠️  Could not set POSTGRES_STORAGE ownership")
+	@echo ""
+	@echo "✅ Setup complete! Run 'make start' to start services."
+	@echo ""
+	@echo "💡 Your existing data (if any) is preserved."
+
+# Interactive setup wizard (for custom paths, fresh install, etc.)
+setup-wizard:
 	@chmod +x setup.sh
 	@DICOM_STORAGE="$(DICOM_STORAGE)" \
 	 POSTGRES_STORAGE="$(POSTGRES_STORAGE)" \
@@ -103,7 +128,7 @@ quick-setup:
 		--aet "$(ORTHANC_AET)"
 
 # Alias for backwards compatibility
-install: setup
+install: setup-wizard
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # SERVICE MANAGEMENT
