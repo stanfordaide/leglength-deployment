@@ -206,59 +206,105 @@ curl http://localhost:9031/workflows
 
 ---
 
-## How Job Tracking Works (For Destination Sends)
+## How Job Tracking Works (3 Stages)
 
-The system uses **async job completion tracking** to know if data actually made it to destinations:
+The system uses **async job completion tracking** across the entire pipeline to get TRUE status:
+
+### Stage 1: Send to MERCURE (AI Processing Initiation)
 
 ```
-┌─────────┐                    ┌──────────────┐              ┌──────────────┐
-│ Orthanc │                    │ Workflow API │              │  Orthanc     │
-│  (Lua)  │                    │  (Flask)     │              │  (Jobs API)  │
-└────┬────┘                    └──────┬───────┘              └──────┬───────┘
-     │                                 │                             │
-     │ 1. SendToModality()             │                             │
-     │ Returns job_id                  │                             │
-     │                                 │                             │
-     │ 2. registerPendingJob()          │                             │
-     ├────────────────────────────────>│                             │
-     │    /track/job                   │                             │
-     │    {job_id, study_id, dest}     │                             │
-     │                                 │                             │
-     │                                 │ 3. Stores in pending_jobs   │
-     │                                 │    (background poller runs) │
-     │                                 │                             │
-     │                                 │ 4. Every 10s:               │
-     │                                 │    GET /jobs/{job_id}       │
-     │                                 ├────────────────────────────>│
-     │                                 │                             │
-     │                                 │    Returns:                 │
-     │                                 │    {State: 'Success'|...}   │
-     │                                 │<────────────────────────────┤
-     │                                 │                             │
-     │                                 │ 5. Update workflow_status   │
-     │                                 │    with TRUE result         │
-     │                                 │                             │
-     │                                 │ 6. Delete from pending_jobs │
+Orthanc              Workflow API         Orthanc
+(Lua)                (Flask)              (Jobs)
+  │                     │                    │
+  │ SendToModality()    │                    │
+  │─────────────────────┤ job_id returned    │
+  │                     │                    │
+  │ registerPendingJob()│                    │
+  ├────────────────────>│ /track/job         │
+  │  (MERCURE)          │                    │
+  │                     │ Every 10s:         │
+  │                     ├───────────────────>│
+  │                     │ GET /jobs/{id}     │
+  │                     │<───────────────────┤
+  │                     │ State: Success     │
+  │                     │ (Mercure got data) │
+  │                     │                    │
+  │                     │ UPDATE workflow:   │
+  │                     │ mercure_sent = ✓   │
 ```
 
-**Key Points:**
-- **Job submission ≠ Job completion**: `SendToModality()` returns immediately, but network delivery happens async
-- **Real status tracking**: The background poller checks Orthanc job status every 10 seconds
-- **Visible in UI**: Check "Pipeline" column in Workflow UI dashboard to see:
-  - `MERCURE →` (sent to Mercure)
-  - `AI →` (AI processing started)
-  - `DESTINATIONS` (final routing to LPCH, LPCHT, MODLINK)
+**Status field:** `mercure_sent_at`, `mercure_send_success`  
+**True meaning:** Data successfully reached Mercure's incoming queue
+
+### Stage 2: AI Processing Complete (Results Received)
+
+```
+Mercure               Orthanc              Workflow API
+(AI Module)           (receives study)     (Flask)
+  │                     │                    │
+  │ Process...          │                    │
+  │ Return results      │                    │
+  │ as new study        │                    │
+  │                     │ OnStableStudy()    │
+  │                     │ (AI_RESULT study)  │
+  │                     │                    │
+  │                     │ Tracker.aiResultsReceived()
+  │                     ├───────────────────>│
+  │                     │ POST /track/ai-results
+  │                     │                    │
+  │                     │                    │ UPDATE workflow:
+  │                     │                    │ ai_results_received = ✓
+  │                     │                    │ ai_results_received_at = NOW()
+```
+
+**Status fields:** `ai_results_received`, `ai_results_received_at`  
+**True meaning:** Processing completed and results returned to Orthanc
+
+### Stage 3: Final Destinations (LPCH, LPCHT, MODLINK)
+
+Same async job tracking as Stage 1:
+
+**Status fields:** `lpch_sent_at`, `lpcht_sent_at`, `modlink_sent_at` + `_send_success`/`_send_error`  
+**True meaning:** Data delivered to final PACS destinations
+
+---
+
+## Complete Pipeline Status Visualization
+
+**UI displays all 3 stages in pipeline column:**
+
+```
+┌──────────────────────────────────────────────┐
+│  MERCURE    →    AI    →    DESTINATIONS     │
+│    ✓              ✓              ⚠            │
+│  Sent     Processed    Partial Success       │
+└──────────────────────────────────────────────┘
+```
+
+**Database schema** (study_workflows table):
+- Stage 1: `mercure_sent_at`, `mercure_send_success`, `mercure_send_error`
+- Stage 2: `ai_results_received_at`, `ai_results_received`
+- Stage 3: `lpch_sent_at`, `lpcht_sent_at`, `modlink_sent_at` + success/error for each
 
 **Monitoring in logs:**
 ```bash
-# Watch the job poller track jobs in real-time
+# Watch job poller for MERCURE + destination jobs
 sudo make monitoring-logs | grep "\[JobPoller\]"
 
-# Example output:
-# [JobPoller] Checking 3 pending jobs...
-# [JobPoller] ✓ Job e7f8b9c2 SUCCEEDED (LPCHROUTER)
-# [JobPoller] ✗ Job c4d2e1a0 FAILED (MODLINK): Network timeout
+# Example:
+# [JobPoller] Checking 5 pending jobs...
+# [JobPoller] ✓ Job abc123 SUCCEEDED (MERCURE) - AI queue received data
+# [JobPoller] ✓ Job def456 SUCCEEDED (LPCHROUTER) - LPCH received results
+# [JobPoller] ✗ Job ghi789 FAILED (MODLINK): Connection timeout
 ```
+
+**How each stage gets marked complete:**
+
+| Stage | Triggered By | Status Updated By |
+|-------|--------------|-------------------|
+| MERCURE | `routeToAI()` calls `SendToModality()` → registers job | Background poller checks `/jobs/{id}` every 10s |
+| AI Results | AI returns study → `Tracker.aiResultsReceived()` | Explicit API call with timestamp |
+| Destinations | `routeToFinalDestinations()` → registers job | Background poller checks `/jobs/{id}` every 10s |
 
 ---
 

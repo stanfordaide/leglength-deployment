@@ -168,7 +168,15 @@ local function routeToAI(studyId, matchResult)
     end
     
     local destination = getDestination("MERCURE")
-    return sendInstance(studyId, instanceId, destination)
+    local success, jobId = sendInstance(studyId, instanceId, destination)
+    
+    -- For MERCURE sends, also register as a pending job to track AI processing start
+    -- The job completes when Mercure finishes sending to the AI module
+    if success and jobId and Tracker.registerPendingJob then
+        Tracker.registerPendingJob(jobId, studyId, "MERCURE")
+    end
+    
+    return success
 end
 
 --
