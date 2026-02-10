@@ -120,6 +120,11 @@ def init_db():
             mercure_send_success BOOLEAN,
             mercure_send_error TEXT,
             
+            -- Stage 1b: MERCURE Processing (from Bookkeeper)
+            mercure_received_at TIMESTAMP,
+            mercure_processing_started_at TIMESTAMP,
+            mercure_processing_completed_at TIMESTAMP,
+            
             -- Stage 2: AI Results received back
             ai_results_received_at TIMESTAMP,
             ai_results_received BOOLEAN DEFAULT FALSE,
