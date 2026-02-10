@@ -51,7 +51,9 @@
     </style>
 </head>
 <body class="bg-midnight-900 text-slate-100 min-h-screen font-sans">
-<!-- Load configuration before main script -->
+<!-- Load generated configuration first (from config.env via setup-config.sh) -->
+<script src="config-generated.js"></script>
+<!-- Fallback configuration if generated config not available -->
 <script src="config.js"></script>
 
 <div x-data="dashboard()" x-init="init()" class="min-h-screen">
@@ -999,13 +1001,15 @@
 
 <script>
 // Configuration - can be overridden by setting window.RADWATCH_CONFIG before this script
+// This is the FALLBACK if config-generated.js is not available
+// For production, regenerate with: make setup (runs setup-config.sh)
 const CONFIG = window.RADWATCH_CONFIG || {
     // All requests proxied through nginx to avoid CORS issues
     orthancUrl: window.location.protocol + '//' + window.location.host + '/orthanc',
     orthancWebUrl: window.location.protocol + '//' + window.location.host + '/orthanc',
     // OHIF viewer (usually served by Orthanc)
     ohifUrl: window.location.protocol + '//' + window.location.host + '/orthanc/ohif/',
-    // Grafana (for metrics)
+    // Grafana (for metrics) - fallback to port 9032
     grafanaUrl: window.location.protocol + '//' + window.location.host.split(':')[0] + ':9032',
     // Workflow API (proxied through nginx at /api/)
     apiBaseUrl: '/api'

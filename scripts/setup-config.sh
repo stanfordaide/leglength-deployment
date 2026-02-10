@@ -225,6 +225,13 @@ chmod 600 "$REPO_ROOT/mercure/config-generated/install.env"
 echo -e "  ${GREEN}✓${NC} mercure/config-generated/*.env (600)"
 
 # =============================================================================
+# Generate UI Configuration
+# =============================================================================
+echo -e "${CYAN}Generating UI configuration...${NC}"
+
+"$SCRIPT_DIR/generate-ui-config.sh" "$REPO_ROOT/config.env" "$REPO_ROOT/monitoring/ui/config-generated.js"
+
+# =============================================================================
 # Summary
 # =============================================================================
 echo ""
