@@ -138,6 +138,7 @@ services:
       - graphite_data:/opt/graphite/storage
     networks:
       - monitoring-net
+      - mercure_default  # Allow Mercure to reach Graphite via container name
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
