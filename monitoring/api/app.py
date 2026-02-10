@@ -298,30 +298,39 @@ def enrich_workflows_from_mercure():
                 
                 try:
                     # Query Bookkeeper for task events for this study
-                    bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
+                    events = []
+                    mercure_received_at = None
                     
-                    bookkeeper_cur.execute("""
-                        SELECT 
-                            event,
-                            time
-                        FROM task_events te
-                        JOIN tasks t ON te.task_id = t.id
-                        WHERE t.study_uid = %s
-                        ORDER BY te.time ASC
-                    """, (study_uid,))
-                    
-                    events = bookkeeper_cur.fetchall()
-                    
-                    # Also query for dicom_series received time
-                    bookkeeper_cur.execute("""
-                        SELECT MIN(time) as received_at
-                        FROM dicom_series
-                        WHERE study_uid = %s
-                    """, (study_uid,))
-                    
-                    series_info = bookkeeper_cur.fetchone()
-                    mercure_received_at = series_info['received_at'] if series_info else None
-                    bookkeeper_cur.close()
+                    try:
+                        bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
+                        
+                        bookkeeper_cur.execute("""
+                            SELECT 
+                                event,
+                                time
+                            FROM task_events te
+                            JOIN tasks t ON te.task_id = t.id
+                            WHERE t.study_uid = %s
+                            ORDER BY te.time ASC
+                        """, (study_uid,))
+                        
+                        events = bookkeeper_cur.fetchall()
+                        
+                        # Also query for dicom_series received time
+                        bookkeeper_cur.execute("""
+                            SELECT MIN(time) as received_at
+                            FROM dicom_series
+                            WHERE study_uid = %s
+                        """, (study_uid,))
+                        
+                        series_info = bookkeeper_cur.fetchone()
+                        mercure_received_at = series_info['received_at'] if series_info else None
+                        bookkeeper_cur.close()
+                    except Exception as bk_err:
+                        # Rollback bookkeeper transaction if it failed
+                        bookkeeper_conn.rollback()
+                        print(f"[MercureEnricher] Bookkeeper query failed for {study_uid}: {bk_err}")
+                        continue
                     
                     # Extract processing timestamps from events
                     processing_started = None
