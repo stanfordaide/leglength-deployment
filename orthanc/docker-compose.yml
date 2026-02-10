@@ -39,14 +39,17 @@ services:
       # Keep old scripts available for rollback
       - ./lua-scripts:/etc/orthanc/lua:ro
       - orthanc-storage:/var/lib/orthanc/db
+    env_file: ./.env
     environment:
       - ORTHANC_NAME=${ORTHANC_AET:-ORTHANC_LPCH}
       - TZ=${TZ:-America/Los_Angeles}
+      # Lua scripts use this to call the workflow-api
+      - WORKFLOW_API_URL=${WORKFLOW_API_URL}
     depends_on:
       orthanc-db:
         condition: service_healthy
     # NOTE: Orthanc Lua scripts call the monitoring stack's workflow-api
-    # via host.docker.internal:${WORKFLOW_API_PORT:-9031}
+    # Uses WORKFLOW_API_URL from config.env (set via setup-config.sh)
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8042/system > /dev/null || exit 1"]
