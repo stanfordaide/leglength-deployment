@@ -15,7 +15,7 @@
     "bookkeeper"                 : "0.0.0.0:8080",
     "bookkeeper_api_key"         : "BOOKKEEPER_TOKEN_PLACEHOLDER",
     "graphite_ip"                : "172.17.0.1",
-    "graphite_port"              :     2003,
+    "graphite_port"              :     9038,
     "influxdb_host"              :       "",
     "influxdb_org"               :       "",
     "influxdb_token"             :       "",
@@ -90,11 +90,7 @@
             "environment": "",
             "docker_arguments": "",
             "settings": {
-                "models": [
-                    "resnet101",
-                    "vit_l_16",
-                    "resnext101_32x8d"
-                ],
+                "models": ["rn50adncti", "rn50adkpncti", "rn50adkp"],
                 "series_offset": 1000,
                 "femur_threshold": 0.2,
                 "tibia_threshold": 0.2,
@@ -103,14 +99,14 @@
                 "monitoring": {
                     "enabled": true,
                     "influxdb": {
-                        "url": "http://host.docker.internal:8086",
-                        "token": "ai-inference-token-12345",
-                        "org": "mercure-ai",
-                        "bucket": "ai-inference-spc",
+                        "url": "",
+                        "token": "",
+                        "org": "",
+                        "bucket": "",
                         "timeout": 5
                     },
                     "prometheus": {
-                        "gateway_url": "http://host.docker.internal:9091",
+                        "gateway_url": "http://host.docker.internal:9037",
                         "job_name": "pediatric-leglength",
                         "instance": "pediatric-leglength-module",
                         "timeout": 5
