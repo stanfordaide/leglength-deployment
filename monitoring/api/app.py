@@ -340,14 +340,15 @@ def enrich_workflows_from_mercure():
                         event_type = event['event'].upper()
                         event_time = event['time']
                         
-                        # RECEIVED: Study was received from Orthanc
-                        # SENT_TO_DISPATCHER: Processing started
-                        # COMPLETED: Processing finished
+                        # Mercure events:
+                        # PROCESS_BEGIN: When actual processing starts (AI module)
+                        # PROCESS_COMPLETE: When processing finishes
+                        # COMPLETE: Final task completion
                         
-                        if event_type == 'SENT_TO_DISPATCHER' and processing_started is None:
+                        if event_type == 'PROCESS_BEGIN' and processing_started is None:
                             processing_started = event_time
                         
-                        if event_type == 'COMPLETED' and processing_completed is None:
+                        if event_type == 'PROCESS_COMPLETE' and processing_completed is None:
                             processing_completed = event_time
                     
                     # Create a new connection and transaction for each update
