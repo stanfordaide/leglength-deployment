@@ -1,182 +1,257 @@
-# Leg Length AI Deployment - Monitoring Stack
+# Monitoring Stack
 
-Consolidated monitoring and control center for the pediatric leg length AI pipeline.
+Workflow tracking, dashboards, and analytics for the pediatric leg length AI pipeline.
+
+## Components
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| **workflow-ui** | 9030 | Study tracking dashboard (Vue.js) |
+| **workflow-api** | 9031 | Workflow tracking API (Flask) |
+| **grafana** | 9032 | Infrastructure dashboards & alerts |
+| **prometheus** | 9033 | Metrics collection |
+| **alertmanager** | 9034 | Alert routing |
+| **node-exporter** | 9035 | Host system metrics |
+| **cadvisor** | 9036 | Docker container metrics |
+| **pushgateway** | 9037 | Prometheus push metrics |
+| **graphite** | 9038 | Mercure metrics receiver |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     leglength-deployment                                    │
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                        Visualization                                │   │
-│  │  ┌─────────────────┐           ┌─────────────────┐                 │   │
-│  │  │  Workflow UI    │           │     Grafana     │                 │   │
-│  │  │  (Vue.js)       │           │                 │                 │   │
-│  │  │  :8080          │           │  :3000          │                 │   │
-│  │  │                 │           │                 │                 │   │
-│  │  │  • Study list   │◀─────────▶│  • Disk usage   │                 │   │
-│  │  │  • Actions      │   links   │  • Containers   │                 │   │
-│  │  │  • OHIF viewer  │           │  • Alerts       │                 │   │
-│  │  └────────┬────────┘           └────────┬────────┘                 │   │
-│  └───────────┼─────────────────────────────┼───────────────────────────┘   │
-│              │                             │                               │
-│              ▼                             ▼                               │
-│  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐          │
-│  │  Workflow API   │   │   Prometheus    │   │    Graphite     │          │
-│  │  (Flask)        │   │   (metrics)     │   │  (Mercure)      │          │
-│  │  :8044          │   │   :9090         │   │  :2003          │          │
-│  └────────┬────────┘   └────────┬────────┘   └────────┬────────┘          │
-│           │                     │                     │                   │
-│           ▼                     │                     │                   │
-│  ┌─────────────────┐            │                     │                   │
-│  │  PostgreSQL     │            │                     │                   │
-│  │  (workflow DB)  │            │                     │                   │
-│  └─────────────────┘            │                     │                   │
-└─────────────────────────────────┼─────────────────────┼───────────────────┘
-                                  │                     │
-         ┌────────────────────────┼─────────────────────┼────────────────┐
-         │                        │                     │                │
-         ▼                        ▼                     ▼                ▼
-    ┌─────────┐              ┌─────────┐          ┌─────────┐      ┌─────────┐
-    │ Orthanc │              │ Docker  │          │ Mercure │      │  Host   │
-    │  PACS   │              │ cAdvisor│          │         │      │  Node   │
-    └─────────┘              └─────────┘          └─────────┘      └─────────┘
+┌──────────────────┐
+│  Workflow UI     │ (9030)
+│  ├─ Recent Studies
+│  ├─ Pipeline Status
+│  ├─ DICOM Routes
+│  └─ Metrics
+└──────────┬───────┘
+           │
+           ▼
+┌──────────────────────────────────────────────┐
+│ Workflow API (9031)                          │
+│ ├─ Study tracking                            │
+│ ├─ Mercure Bookkeeper integration            │
+│ ├─ Orthanc API calls                         │
+│ └─ Postgres (workflow_db)                    │
+└──────────┬──────────────────────────────────┘
+           │
+    ┌──────┴──────┐
+    │             │
+    ▼             ▼
+Orthanc       Mercure
+(9011)        (9020)
 ```
-
-## Services
-
-| Service | Port | Description |
-|---------|------|-------------|
-| **workflow-ui** | 8080 | Study tracking dashboard with action buttons |
-| **workflow-api** | 8044 | REST API for workflow events and actions |
-| **grafana** | 3000 | Infrastructure dashboards and alerting |
-| **prometheus** | 9090 | Metrics collection and storage |
-| **graphite** | 2003 | Mercure metrics receiver |
-| **node-exporter** | 9100 | Host system metrics |
-| **cadvisor** | 8081 | Docker container metrics |
-| **alertmanager** | 9093 | Alert routing and notifications |
 
 ## Quick Start
 
+### 1. Configuration
+
+Configuration is generated by parent `make setup` from `config.env.template`.
+
+To manually regenerate:
 ```bash
-# 1. Copy environment template
-cp env.template .env
-
-# 2. Edit configuration
-vim .env
-
-# 3. Start the stack
-docker compose up -d
-
-# 4. Access dashboards
-#    - Workflow UI: http://localhost:8080
-#    - Grafana: http://localhost:3000
+cd ..
+sudo make setup
+cd monitoring
 ```
 
-## Configuration
-
-### Connecting to Orthanc
-
-The workflow API can send actions to Orthanc. Configure in `.env`:
+### 2. Start Services
 
 ```bash
-ORTHANC_URL=http://host.docker.internal:8042
-ORTHANC_USER=orthanc
-ORTHANC_PASS=orthanc
+# All monitoring services
+sudo docker compose up -d
+
+# Specific service
+sudo docker compose up -d workflow-ui
 ```
 
-### Connecting to Mercure
+### 3. Access
 
-For enriched job tracking, connect to Mercure's database:
+- **Workflow UI:** http://localhost:9030
+- **Grafana:** http://localhost:9032 (admin/admin by default)
+- **Prometheus:** http://localhost:9033
+
+## Key Features
+
+### Workflow UI
+
+- Real-time study tracking
+- Pipeline status: MERCURE → AI → DESTINATIONS
+- Recent studies table with inline pipeline chips
+- Destination management (add/test/edit)
+- OHIF Viewer integration
+
+### Workflow API Endpoints
 
 ```bash
-MERCURE_DB_HOST=mercure_db_1
-MERCURE_DB_PORT=5432
-MERCURE_DB_NAME=mercure
-MERCURE_DB_USER=mercure
-MERCURE_DB_PASS=your_password
+# Get all recent workflows
+curl http://localhost:9031/workflows
+
+# Get funnel analytics (last 24h)
+curl http://localhost:9031/funnel?hours=24
+
+# Get pipeline trends
+curl http://localhost:9031/funnel/timeseries?hours=24&interval=hour
+
+# Recover lost workflow data from Mercure
+curl -X POST http://localhost:9031/workflows/sync
+
+# Mercure AI processing details
+curl http://localhost:9031/mercure/study/{study_uid}
 ```
 
-### Mercure → Graphite
-
-Configure Mercure to send metrics to this stack. In `mercure.json`:
-
-```json
-{
-  "graphite_ip": "localhost",
-  "graphite_port": 2003
-}
-```
-
-## Orthanc Integration
-
-For Orthanc to send workflow events to this stack, configure the Lua scripts to POST to:
-
-```
-http://<this-host>:8044/track/start
-http://<this-host>:8044/track/mercure-sent
-http://<this-host>:8044/track/ai-results
-http://<this-host>:8044/track/final-route
-```
-
-## Actions Available
-
-The workflow UI provides these actions:
-
-| Action | Description |
-|--------|-------------|
-| **Re-route to Mercure** | Send a study back through AI processing |
-| **Clear AI Output** | Remove AI-generated series from a study |
-| **Fresh Reprocess** | Clear + reset tracking + re-route |
-| **View in OHIF** | Open study in DICOM viewer |
-
-## Alerts
-
-Pre-configured alerts:
-
-- **DiskSpaceWarning** - Disk below 20% free
-- **DiskSpaceCritical** - Disk below 10% free
-- **ContainerDown** - Critical container stopped
-- **ContainerRestarting** - Frequent restarts detected
-- **NoStudiesReceived** - No new studies in 24h
-
-Configure Slack notifications in `.env`:
+### Environment Variables (from parent config.env)
 
 ```bash
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-SLACK_CHANNEL=#alerts
+ORTHANC_WEB_PORT=9011
+ORTHANC_API_URL=http://172.17.0.1:9011          # Container → Host
+ORTHANC_USERNAME=orthanc_admin
+ORTHANC_PASSWORD=...
+
+BOOKKEEPER_DB_HOST=172.17.0.1                   # Mercure Bookkeeper
+BOOKKEEPER_DB_PORT=9022
+BOOKKEEPER_DB_NAME=mercure
+BOOKKEEPER_DB_USER=mercure
+BOOKKEEPER_DB_PASS=...
+
+MONITORING_API_PORT=9031
+MONITORING_UI_PORT=9030
+```
+
+## Data Persistence
+
+- **workflow_db** PostgreSQL: `volumes/postgres-monitoring`
+  - Stores study tracking state
+  - NOT cleared on restart
+  
+- **Metrics** Prometheus: `volumes/prometheus-monitoring`
+  - Time-series metrics (30-day retention)
+
+## Making Changes
+
+### Update the UI
+
+```bash
+# Edit monitoring/ui/index.html
+vim ui/index.html
+
+# Restart UI container
+sudo docker compose restart workflow-ui
+
+# Verify
+curl http://localhost:9030
+```
+
+### Update the API
+
+```bash
+# Edit monitoring/api/app.py
+vim api/app.py
+
+# Rebuild image (if needed)
+sudo docker build -f api/Dockerfile -t workflow-api:latest api/
+
+# Restart
+sudo docker compose restart workflow-api
+
+# Check logs
+sudo docker compose logs workflow-api
+```
+
+### Update Configuration
+
+```bash
+# Edit parent config.env.template
+cd ..
+vim config.env.template
+
+# Regenerate all configs
+sudo make setup
+
+# Restart monitoring services
+cd monitoring
+sudo docker compose restart workflow-api
+```
+
+## Troubleshooting
+
+### UI Shows "API Connection Failed"
+
+```bash
+# Check workflow-api is running
+sudo docker compose ps workflow-api
+
+# Test API connection
+curl http://localhost:9031/workflows
+
+# View logs
+sudo docker compose logs workflow-api
+```
+
+### Studies Not Showing in UI
+
+```bash
+# Check Orthanc connectivity
+sudo docker exec workflow-api curl http://172.17.0.1:9011/studies
+
+# Recover from Mercure if reset
+curl -X POST http://localhost:9031/workflows/sync
+
+# Check workflow database
+sudo docker exec monitoring_postgres_1 psql -U workflow_user -d workflow_db -c "SELECT COUNT(*) FROM study_workflows;"
+```
+
+### Slow Dashboard
+
+```bash
+# Reduce data retention (Prometheus)
+vim config/prometheus/prometheus.yml
+# Change: retention: 15d
+
+# Restart Prometheus
+sudo docker compose restart prometheus
 ```
 
 ## Directory Structure
 
 ```
-leglength-deployment/
-├── docker-compose.yml      # Main orchestration
-├── env.template            # Configuration template
+monitoring/
+├── docker-compose.yml          # Service definitions
+├── README.md                   # This file
+├── Makefile                    # Local commands
 ├── api/
 │   ├── Dockerfile
-│   ├── app.py              # Workflow tracking API
+│   ├── app.py                  # Flask workflow API
 │   └── requirements.txt
 ├── ui/
-│   └── index.html          # Workflow dashboard
+│   ├── index.html              # Workflow dashboard
+│   ├── config.js               # Fallback config
+│   └── config-generated.js     # Generated from setup-config.sh
 ├── config/
 │   ├── nginx/
-│   │   └── default.conf    # UI server config
+│   │   └── default.conf        # UI proxy & API routing
 │   ├── prometheus/
-│   │   ├── prometheus.yml  # Scrape targets
-│   │   ├── alert_rules.yml # Alert definitions
+│   │   ├── prometheus.yml
+│   │   └── alert_rules.yml
+│   ├── alertmanager/
 │   │   └── alertmanager.yml
 │   └── grafana/
 │       ├── provisioning/
-│       │   └── datasources/
+│       │   ├── datasources/
+│       │   └── dashboards/
 │       └── dashboards/
 └── scripts/
-    └── (utility scripts)
+    └── (utilities)
 ```
 
-## Related Projects
+## Related
 
-- `orthanc/` - DICOM PACS server
-- `mercure/` - AI orchestration platform
-- `mercure-pediatric-leglength/` - AI processing module
+- **Parent:** [leglength-deployment/](../)
+- **Workflow Guide:** [../CHANGES.md](../CHANGES.md)
+- **Orthanc Integration:** [../orthanc/](../orthanc/)
+- **Mercure Integration:** [../mercure/](../mercure/)
+
+## License
+
+Internal use only - Stanford AIDE Lab

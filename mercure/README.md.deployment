@@ -1,0 +1,185 @@
+# Mercure - Leg Length AI Integration
+
+Mercure handles AI job orchestration for the pediatric leg length pipeline.
+
+> **Note:** This is a deployment-specific guide. See [README.md](README.md) for full Mercure documentation.
+
+## Ports
+
+| Port | Service | Purpose |
+|------|---------|---------|
+| **9020** | Web UI | Job management & monitoring |
+| **9021** | Bookkeeper API | Analytics database REST API |
+| **9022** | PostgreSQL | Bookkeeper analytics database |
+| **11112** | DICOM | DICOM routing (receiver) |
+
+## Quick Start
+
+Configuration is handled by parent setup process:
+
+```bash
+# Mercure is installed by parent Makefile
+cd ..
+sudo make setup
+make mercure-install
+
+# Access Mercure Web UI
+# http://localhost:9020
+# (No password - internal use)
+```
+
+## How It Works
+
+```
+Orthanc (9011)
+    │
+    ├─ [Lua] Checks if AI needed?
+    │
+    └─→ C-STORE to Mercure (11112)
+            │
+            ▼
+        ┌─────────────────┐
+        │ Mercure Router  │
+        │ (Matches rules) │
+        └─────────────────┘
+            │
+            ▼
+        ┌─────────────────┐
+        │ Processor       │
+        │ (Docker tasks)  │
+        └─────────────────┘
+            │
+            ├─ Spins up AI module container
+            │
+            └─→ Results back to Orthanc
+```
+
+## Integration Points
+
+### From Orthanc
+
+Lua scripts in `orthanc/lua-scripts-v2/` send studies to Mercure:
+
+```lua
+-- orthanc/lua-scripts-v2/config.lua
+mercure_dest = {
+  aet = "MERCURE",
+  ip = "172.17.0.1",
+  port = 11112  -- Mercure receiver
+}
+```
+
+### Monitoring Integration
+
+The Monitoring Workflow API reads from **Mercure Bookkeeper** (PostgreSQL analytics):
+
+```bash
+# Bookkeeper contains processing history
+BOOKKEEPER_DB_HOST=172.17.0.1
+BOOKKEEPER_DB_PORT=9022
+BOOKKEEPER_DB_NAME=mercure
+BOOKKEEPER_DB_USER=mercure
+```
+
+Query recent processing:
+```bash
+curl http://localhost:9021/tasks  # Bookkeeper REST API
+```
+
+## AI Module Configuration
+
+The pediatric leg length AI module runs in Mercure:
+
+```bash
+# mercure/docker-build.sh
+# Includes: mercure-pediatric-leglength/ as processor
+```
+
+Each task in Mercure's task.json specifies:
+
+```json
+{
+  "task_name": "leg-length-ai",
+  "module": "mercure-pediatric-leglength",
+  "modality": ["DX"],
+  "dispatch": {
+    "targets": ["LPCH", "MODLINK"]
+  }
+}
+```
+
+## Web UI
+
+Access at http://localhost:9020:
+
+- **Tasks:** View processing jobs
+- **Logs:** Debug AI processing
+- **Config:** Edit routing rules
+- **Plugins:** Manage processors
+
+## Troubleshooting
+
+### Study stuck in Mercure
+
+```bash
+# Check task logs in Mercure Web UI
+# http://localhost:9020 → Logs
+
+# Or check processor container logs
+sudo docker logs mercure_processor_1
+```
+
+### AI module not processing
+
+1. Check Mercure receives study: `http://localhost:9020 → Tasks`
+2. Verify task.json has correct processor: `config/default_mercure.json`
+3. Check AI module container: `sudo docker logs mercure-pediatric-leglength`
+
+### Results not going back to Orthanc
+
+1. Verify dispatch target in task.json
+2. Check Orthanc is accessible: `curl http://172.17.0.1:9011/system`
+3. Verify destination modality exists in Orthanc
+
+## Data Flow to Monitoring
+
+Mercure Bookkeeper tracks all processing:
+
+```sql
+-- mercure/postgres/
+SELECT * FROM tasks;              -- All processing jobs
+SELECT * FROM task_events;        -- Processing history
+SELECT * FROM dicom_series;       -- Series metadata
+```
+
+Monitoring API queries this to show:
+- AI processing status
+- Routing status
+- Performance analytics
+
+## File Structure
+
+```
+mercure/
+├── README.md                      # Full Mercure docs
+├── README.md.deployment           # This file
+├── docker-build.sh                # Include pediatric module
+├── configuration/
+│   └── default_mercure.json       # Routing rules & processors
+├── docker/
+│   └── docker-compose.yml         # Mercure services
+└── app/                           # Mercure core
+```
+
+## Related
+
+- **Parent:** [leglength-deployment/](../)
+- **Workflow Guide:** [../CHANGES.md](../CHANGES.md)
+- **Orthanc Router:** [../orthanc/](../orthanc/)
+- **Monitoring:** [../monitoring/](../monitoring/)
+- **AI Module:** [../mercure-pediatric-leglength/](../mercure-pediatric-leglength/)
+- **Mercure Docs:** https://mercure-imaging.org/
+
+## License
+
+Internal use only - Stanford AIDE Lab
