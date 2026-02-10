@@ -1,18 +1,19 @@
 // RADWATCH Configuration
 // Edit this file to customize your deployment
+// NOTE: These ports should match your config.env values
 
 window.RADWATCH_CONFIG = {
-    // Orthanc PACS server
-    // Change this to your Orthanc URL
-    orthancUrl: 'http://' + window.location.hostname + ':8042',
-    orthancWebUrl: 'http://' + window.location.hostname + ':8042',
+    // Orthanc PACS server (port 9011 in this deployment)
+    orthancUrl: 'http://' + window.location.hostname + ':9011',
+    orthancWebUrl: 'http://' + window.location.hostname + ':9011',
     
-    // OHIF Viewer (usually served by Orthanc plugin)
-    ohifUrl: 'http://' + window.location.hostname + ':8042/ohif/',
+    // OHIF Viewer (port 9012 in this deployment)
+    ohifUrl: 'http://' + window.location.hostname + ':9012',
     
-    // Grafana for metrics/dashboards
-    grafanaUrl: 'http://' + window.location.hostname + ':3000',
+    // Grafana for metrics/dashboards (port 9032 in this deployment)
+    grafanaUrl: 'http://' + window.location.hostname + ':9032',
     
-    // Workflow API (served through nginx proxy)
+    // Workflow API (served through nginx proxy at /api/)
+    // This proxies to workflow-api:5000 inside Docker
     apiBaseUrl: '/api'
 };
