@@ -1358,10 +1358,12 @@ def sync_workflows_from_mercure():
         
         # For each study in Mercure, check if it exists in Orthanc and create workflow record
         orthanc_api_url = os.environ.get('ORTHANC_API_URL', 'http://172.17.0.1:9011')
-        orthanc_auth = (
-            os.environ.get('ORTHANC_USERNAME', ''),
-            os.environ.get('ORTHANC_PASSWORD', '')
-        )
+        orthanc_username = os.environ.get('ORTHANC_USERNAME', '')
+        orthanc_password = os.environ.get('ORTHANC_PASSWORD', '')
+        orthanc_auth = (orthanc_username, orthanc_password)
+        
+        print(f"[SYNC] Orthanc URL: {orthanc_api_url}", flush=True)
+        print(f"[SYNC] Orthanc auth user: {orthanc_username}", flush=True)
         
         # First, build a map of StudyInstanceUID -> study_id from Orthanc
         orthanc_studies = {}
