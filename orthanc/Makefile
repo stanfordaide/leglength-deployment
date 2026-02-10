@@ -285,13 +285,13 @@ validate:
 # Manually seed default DICOM modalities
 seed-modalities:
 	@echo "🌱 Seeding default DICOM modalities..."
-	@curl -s -u "$(ORTHANC_USERNAME):$(ORTHANC_PASSWORD)" -X PUT "http://localhost:$(ORTHANC_WEB_PORT)/modalities/MERCURE" \
-		-H "Content-Type: application/json" -d '{"AET":"orthanc","Host":"172.17.0.1","Port":11112,"AllowEcho":true,"AllowStore":true}' && echo "  ✅ MERCURE" || echo "  ❌ MERCURE"
-	@curl -s -u "$(ORTHANC_USERNAME):$(ORTHANC_PASSWORD)" -X PUT "http://localhost:$(ORTHANC_WEB_PORT)/modalities/LPCHROUTER" \
+	@. ./.env && curl -s -u "$${ORTHANC_ADMIN_USER}:$${ORTHANC_ADMIN_PASS}" -X PUT "http://localhost:$${ORTHANC_WEB_PORT:-9011}/modalities/MERCURE" \
+		-H "Content-Type: application/json" -d '{"AET":"MERCURE","Host":"172.17.0.1","Port":11112,"AllowEcho":true,"AllowStore":true}' && echo "  ✅ MERCURE" || echo "  ❌ MERCURE"
+	@. ./.env && curl -s -u "$${ORTHANC_ADMIN_USER}:$${ORTHANC_ADMIN_PASS}" -X PUT "http://localhost:$${ORTHANC_WEB_PORT:-9011}/modalities/LPCHROUTER" \
 		-H "Content-Type: application/json" -d '{"AET":"LPCHROUTER","Host":"10.50.133.21","Port":4000,"AllowEcho":true,"AllowStore":true}' && echo "  ✅ LPCHROUTER" || echo "  ❌ LPCHROUTER"
-	@curl -s -u "$(ORTHANC_USERNAME):$(ORTHANC_PASSWORD)" -X PUT "http://localhost:$(ORTHANC_WEB_PORT)/modalities/LPCHTROUTER" \
+	@. ./.env && curl -s -u "$${ORTHANC_ADMIN_USER}:$${ORTHANC_ADMIN_PASS}" -X PUT "http://localhost:$${ORTHANC_WEB_PORT:-9011}/modalities/LPCHTROUTER" \
 		-H "Content-Type: application/json" -d '{"AET":"LPCHTROUTER","Host":"10.50.130.114","Port":4000,"AllowEcho":true,"AllowStore":true}' && echo "  ✅ LPCHTROUTER" || echo "  ❌ LPCHTROUTER"
-	@curl -s -u "$(ORTHANC_USERNAME):$(ORTHANC_PASSWORD)" -X PUT "http://localhost:$(ORTHANC_WEB_PORT)/modalities/MODLINK" \
+	@. ./.env && curl -s -u "$${ORTHANC_ADMIN_USER}:$${ORTHANC_ADMIN_PASS}" -X PUT "http://localhost:$${ORTHANC_WEB_PORT:-9011}/modalities/MODLINK" \
 		-H "Content-Type: application/json" -d '{"AET":"PSRTBONEAPP01","Host":"10.251.201.59","Port":104,"AllowEcho":true,"AllowStore":true}' && echo "  ✅ MODLINK" || echo "  ❌ MODLINK"
 	@echo ""
 	@echo "Done! Refresh the dashboard to see modalities."
