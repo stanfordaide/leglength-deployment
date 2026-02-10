@@ -816,6 +816,9 @@ def get_funnel():
     existing_study_ids = all_studies
     
     # Now query stats only for existing studies
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
     if existing_study_ids:
         placeholders = ','.join(['%s'] * len(existing_study_ids))
         cur.execute(f"""
