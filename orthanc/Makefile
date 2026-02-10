@@ -286,30 +286,30 @@ validate:
 # Run with: sudo make seed-modalities
 seed-modalities:
 	@echo "🌱 Seeding default DICOM modalities..."
-	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
-	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
-	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	@USER=$$(cat .env | grep "^ORTHANC_USERNAME=" | cut -d= -f2) && \
+	 PASS=$$(cat .env | grep "^ORTHANC_PASSWORD=" | cut -d= -f2) && \
+	 PORT=$$(cat .env | grep "^ORTHANC_WEB_PORT=" | cut -d= -f2) && \
 	 PORT=$${PORT:-9011} && \
-	 echo "  Using port $$PORT, user $$ORTHANC_ADMIN_USER" && \
-	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/MERCURE" \
+	 echo "  Using port $$PORT, user $$USER" && \
+	 curl -sf -u "$$USER:$$PASS" -X PUT "http://localhost:$$PORT/modalities/MERCURE" \
 		-H "Content-Type: application/json" -d '{"AET":"MERCURE","Host":"172.17.0.1","Port":11112}' && echo "  ✅ MERCURE" || echo "  ❌ MERCURE"
-	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
-	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
-	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	@USER=$$(cat .env | grep "^ORTHANC_USERNAME=" | cut -d= -f2) && \
+	 PASS=$$(cat .env | grep "^ORTHANC_PASSWORD=" | cut -d= -f2) && \
+	 PORT=$$(cat .env | grep "^ORTHANC_WEB_PORT=" | cut -d= -f2) && \
 	 PORT=$${PORT:-9011} && \
-	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/LPCHROUTER" \
+	 curl -sf -u "$$USER:$$PASS" -X PUT "http://localhost:$$PORT/modalities/LPCHROUTER" \
 		-H "Content-Type: application/json" -d '{"AET":"LPCHROUTER","Host":"10.50.133.21","Port":4000}' && echo "  ✅ LPCHROUTER" || echo "  ❌ LPCHROUTER"
-	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
-	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
-	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	@USER=$$(cat .env | grep "^ORTHANC_USERNAME=" | cut -d= -f2) && \
+	 PASS=$$(cat .env | grep "^ORTHANC_PASSWORD=" | cut -d= -f2) && \
+	 PORT=$$(cat .env | grep "^ORTHANC_WEB_PORT=" | cut -d= -f2) && \
 	 PORT=$${PORT:-9011} && \
-	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/LPCHTROUTER" \
+	 curl -sf -u "$$USER:$$PASS" -X PUT "http://localhost:$$PORT/modalities/LPCHTROUTER" \
 		-H "Content-Type: application/json" -d '{"AET":"LPCHTROUTER","Host":"10.50.130.114","Port":4000}' && echo "  ✅ LPCHTROUTER" || echo "  ❌ LPCHTROUTER"
-	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
-	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
-	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	@USER=$$(cat .env | grep "^ORTHANC_USERNAME=" | cut -d= -f2) && \
+	 PASS=$$(cat .env | grep "^ORTHANC_PASSWORD=" | cut -d= -f2) && \
+	 PORT=$$(cat .env | grep "^ORTHANC_WEB_PORT=" | cut -d= -f2) && \
 	 PORT=$${PORT:-9011} && \
-	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/MODLINK" \
+	 curl -sf -u "$$USER:$$PASS" -X PUT "http://localhost:$$PORT/modalities/MODLINK" \
 		-H "Content-Type: application/json" -d '{"AET":"PSRTBONEAPP01","Host":"10.251.201.59","Port":104}' && echo "  ✅ MODLINK" || echo "  ❌ MODLINK"
 	@echo ""
 	@echo "Done! Verify with: curl -s -u user:pass http://localhost:9011/modalities | jq"
