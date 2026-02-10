@@ -243,6 +243,129 @@ def poll_pending_jobs():
         time.sleep(JOB_POLL_INTERVAL)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MERCURE ENRICHMENT - Background thread to query Bookkeeper for processing stages
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def enrich_workflows_from_mercure():
+    """Background thread that enriches workflow records with Mercure processing status
+    
+    Queries Bookkeeper for studies that were sent to Mercure but don't have 
+    processing timestamps yet, and fills in:
+    - mercure_received_at
+    - mercure_processing_started_at
+    - mercure_processing_completed_at
+    """
+    print(f"[MercureEnricher] Started - querying Bookkeeper every 30s")
+    
+    while True:
+        try:
+            bookkeeper_conn = get_bookkeeper_db()
+            if bookkeeper_conn is None:
+                print("[MercureEnricher] Bookkeeper not configured, skipping")
+                time.sleep(30)
+                continue
+            
+            workflow_conn = get_db()
+            workflow_cur = workflow_conn.cursor(cursor_factory=RealDictCursor)
+            bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Find studies that were sent to Mercure but don't have full processing info
+            workflow_cur.execute("""
+                SELECT study_id, study_instance_uid 
+                FROM study_workflows 
+                WHERE mercure_sent_at IS NOT NULL 
+                AND (mercure_received_at IS NULL 
+                     OR mercure_processing_started_at IS NULL 
+                     OR mercure_processing_completed_at IS NULL)
+                LIMIT 50
+            """)
+            
+            pending_studies = workflow_cur.fetchall()
+            
+            if pending_studies:
+                print(f"[MercureEnricher] Enriching {len(pending_studies)} studies from Bookkeeper...")
+            
+            for study in pending_studies:
+                study_uid = study['study_instance_uid']
+                study_id = study['study_id']
+                
+                if not study_uid:
+                    continue
+                
+                try:
+                    # Query Bookkeeper for task events for this study
+                    bookkeeper_cur.execute("""
+                        SELECT 
+                            event,
+                            time
+                        FROM task_events te
+                        JOIN tasks t ON te.task_id = t.id
+                        WHERE t.study_uid = %s
+                        ORDER BY te.time ASC
+                    """, (study_uid,))
+                    
+                    events = bookkeeper_cur.fetchall()
+                    
+                    # Also query for dicom_series received time
+                    bookkeeper_cur.execute("""
+                        SELECT MIN(time) as received_at
+                        FROM dicom_series
+                        WHERE study_uid = %s
+                    """, (study_uid,))
+                    
+                    series_info = bookkeeper_cur.fetchone()
+                    mercure_received_at = series_info['received_at'] if series_info else None
+                    
+                    # Extract processing timestamps from events
+                    processing_started = None
+                    processing_completed = None
+                    
+                    for event in events:
+                        event_type = event['event'].upper()
+                        event_time = event['time']
+                        
+                        # RECEIVED: Study was received from Orthanc
+                        # SENT_TO_DISPATCHER: Processing started
+                        # COMPLETED: Processing finished
+                        
+                        if event_type == 'SENT_TO_DISPATCHER' and processing_started is None:
+                            processing_started = event_time
+                        
+                        if event_type == 'COMPLETED' and processing_completed is None:
+                            processing_completed = event_time
+                    
+                    # Update workflow with Mercure processing info
+                    workflow_cur.execute("""
+                        UPDATE study_workflows 
+                        SET 
+                            mercure_received_at = COALESCE(mercure_received_at, %s),
+                            mercure_processing_started_at = COALESCE(mercure_processing_started_at, %s),
+                            mercure_processing_completed_at = COALESCE(mercure_processing_completed_at, %s),
+                            updated_at = NOW()
+                        WHERE study_id = %s
+                    """, (mercure_received_at, processing_started, processing_completed, study_id))
+                    
+                    workflow_conn.commit()
+                    
+                    print(f"[MercureEnricher] ✓ {study_uid[:12]}... - "
+                          f"received: {mercure_received_at}, "
+                          f"processing: {processing_started}")
+                    
+                except Exception as e:
+                    print(f"[MercureEnricher] Error enriching {study_uid}: {e}")
+            
+            bookkeeper_cur.close()
+            bookkeeper_conn.close()
+            workflow_cur.close()
+            workflow_conn.close()
+            
+        except Exception as e:
+            print(f"[MercureEnricher] Error: {e}")
+        
+        time.sleep(30)  # Query Bookkeeper every 30 seconds
+
+
 def update_workflow_status(cur, study_id, destination, success, error):
     """Update the workflow table with job completion status"""
     col_map = {
@@ -1274,6 +1397,7 @@ def mercure_enrich_workflow(study_id):
 
 _initialized = False
 _poller_started = False
+_enricher_started = False
 
 def init_on_startup():
     global _initialized
@@ -1306,16 +1430,31 @@ def start_job_poller():
     print("[Init] Job poller thread started", flush=True)
 
 
+def start_mercure_enricher():
+    """Start the background Mercure enrichment thread"""
+    global _enricher_started
+    if _enricher_started:
+        return
+    
+    enricher_thread = threading.Thread(target=enrich_workflows_from_mercure, daemon=True)
+    enricher_thread.start()
+    _enricher_started = True
+    print("[Init] Mercure enricher thread started", flush=True)
+
+
 # Initialize database tables on module import
 init_on_startup()
 
 
 @app.before_request
-def ensure_poller_running():
-    """Ensure job poller is running (lazy start after fork)"""
-    global _poller_started
-    if not _poller_started and _initialized:
-        start_job_poller()
+def ensure_pollers_running():
+    """Ensure job poller and enricher are running (lazy start after fork)"""
+    global _poller_started, _enricher_started
+    if _initialized:
+        if not _poller_started:
+            start_job_poller()
+        if not _enricher_started:
+            start_mercure_enricher()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1486,4 +1625,5 @@ def sync_workflows_from_mercure():
 
 if __name__ == '__main__':
     start_job_poller()
+    start_mercure_enricher()
     app.run(host='0.0.0.0', port=5000)
