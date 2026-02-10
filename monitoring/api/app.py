@@ -882,7 +882,8 @@ def get_funnel():
     conn.close()
     
     # Build funnel data structure (rest is the same)
-    total = stats['total_studies'] or 0
+    # Use the actual count from Orthanc, not the database (which only has tracked studies)
+    total = len(existing_study_ids)
     ai_received = stats['ai_results_received'] or 0
     
     def pct(n, base=None):
