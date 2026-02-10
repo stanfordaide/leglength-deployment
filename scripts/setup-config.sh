@@ -73,7 +73,7 @@ echo ""
 echo -e "${CYAN}Generating orthanc/.env...${NC}"
 cat > "$REPO_ROOT/orthanc/.env" << EOF
 # Auto-generated from config.env - DO NOT EDIT DIRECTLY
-# Re-run 'make setup-config' to regenerate
+# Re-run 'make setup' to regenerate
 
 # Storage
 DICOM_STORAGE=${ORTHANC_DICOM_STORAGE}
@@ -100,6 +100,29 @@ ROUTING_API_PORT=${ORTHANC_API_PORT}
 TZ=${TZ}
 EOF
 echo -e "  ${GREEN}✓${NC} orthanc/.env created"
+
+# =============================================================================
+# Generate Orthanc orthanc.json (from template)
+# =============================================================================
+echo -e "${CYAN}Generating orthanc/config/orthanc.json...${NC}"
+
+ORTHANC_JSON_TEMPLATE="$REPO_ROOT/orthanc/config/orthanc.json.template"
+ORTHANC_JSON_OUTPUT="$REPO_ROOT/orthanc/config/orthanc.json"
+
+if [ ! -f "$ORTHANC_JSON_TEMPLATE" ]; then
+    echo -e "  ${RED}✗${NC} Template not found: $ORTHANC_JSON_TEMPLATE"
+    exit 1
+fi
+
+# Use envsubst to replace variables in template
+# We need to export the variables for envsubst
+export ORTHANC_AET ORTHANC_DB_USER ORTHANC_DB_PASS ORTHANC_ADMIN_USER ORTHANC_ADMIN_PASS
+
+envsubst '${ORTHANC_AET} ${ORTHANC_DB_USER} ${ORTHANC_DB_PASS} ${ORTHANC_ADMIN_USER} ${ORTHANC_ADMIN_PASS}' \
+    < "$ORTHANC_JSON_TEMPLATE" \
+    > "$ORTHANC_JSON_OUTPUT"
+
+echo -e "  ${GREEN}✓${NC} orthanc/config/orthanc.json created"
 
 # =============================================================================
 # Generate Mercure db.env (for pre-installation)
@@ -191,6 +214,9 @@ echo -e "  ${GREEN}✓${NC} config.env (600 - owner read/write only)"
 chmod 600 "$REPO_ROOT/orthanc/.env"
 echo -e "  ${GREEN}✓${NC} orthanc/.env (600)"
 
+chmod 600 "$REPO_ROOT/orthanc/config/orthanc.json"
+echo -e "  ${GREEN}✓${NC} orthanc/config/orthanc.json (600)"
+
 chmod 600 "$REPO_ROOT/monitoring/.env"
 echo -e "  ${GREEN}✓${NC} monitoring/.env (600)"
 
@@ -208,6 +234,7 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo "Generated files:"
 echo "  • orthanc/.env"
+echo "  • orthanc/config/orthanc.json"
 echo "  • mercure/config-generated/db.env"
 echo "  • mercure/config-generated/install.env"
 echo "  • monitoring/.env"

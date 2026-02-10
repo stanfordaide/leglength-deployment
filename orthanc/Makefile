@@ -10,7 +10,7 @@
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-.PHONY: help setup install quick-setup start stop restart logs status clean reset uninstall upgrade backup restore backup-list validate seed-modalities rebuild menu
+.PHONY: help setup install quick-setup start stop restart logs status clean reset uninstall upgrade backup restore backup-list validate seed-modalities rebuild menu sync-db-password
 
 # Overridable variables with defaults
 DICOM_STORAGE ?= /opt/orthanc/orthanc-storage
@@ -46,6 +46,7 @@ help:
 	@echo "  make uninstall              Remove everything (DANGER: deletes all data!)"
 	@echo "  make seed-modalities        Add default DICOM destinations"
 	@echo "  make validate               Check configuration"
+	@echo "  make sync-db-password       Sync .env password to running database"
 	@echo ""
 	@echo "BACKUP/RESTORE"
 	@echo "  make backup                 Create backup of DICOM data and database"
@@ -136,11 +137,25 @@ install: setup-wizard
 
 start:
 	@docker compose up -d
+	@echo "⏳ Waiting for database to be ready..."
+	@sleep 3
+	@$(MAKE) -s sync-db-password || true
 	@echo "✅ Services started"
 	@echo ""
 	@echo "  Dashboard: http://localhost:$${OPERATOR_UI_PORT:-9010}"
 	@echo "  Orthanc:   http://localhost:$${ORTHANC_WEB_PORT:-9011}"
 	@echo "  OHIF:      http://localhost:$${OHIF_PORT:-9012}"
+
+# Sync database password from .env to running PostgreSQL
+# This fixes the issue where POSTGRES_PASSWORD only works on first init
+sync-db-password:
+	@if [ -f .env ]; then \
+		. ./.env && \
+		echo "🔐 Syncing database password..." && \
+		docker exec orthanc-postgres psql -U postgres -c "ALTER USER $${POSTGRES_USER:-orthanc} WITH PASSWORD '$${POSTGRES_PASSWORD}';" > /dev/null 2>&1 && \
+		echo "   ✅ Password synced" || \
+		echo "   ⚠️  Could not sync password (database may still be starting)"; \
+	fi
 
 stop:
 	@docker compose stop

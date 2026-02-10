@@ -1,5 +1,5 @@
 {
-    "Name" : "Orthanc",
+    "Name" : "${ORTHANC_AET}",
     "StorageDirectory" : "/var/lib/orthanc/db",
     "StorageCompression" : false,
     "MaximumStorageSize" : 0,
@@ -18,8 +18,8 @@
       "Host" : "orthanc-db",
       "Port" : 5432,
       "Database" : "orthanc",
-      "Username" : "orthanc",
-      "Password" : "ChangeThisPassword",
+      "Username" : "${ORTHANC_DB_USER}",
+      "Password" : "${ORTHANC_DB_PASS}",
       "EnableSsl" : false,
       "MaximumConnectionRetries" : 20,
       "ConnectionRetryInterval" : 5,
@@ -40,7 +40,7 @@
     "WebDavUploadAllowed" : true,
   
     "DicomServerEnabled" : true,
-    "DicomAet" : "ORTHANC_LPCH",
+    "DicomAet" : "${ORTHANC_AET}",
     "DicomCheckCalledAet" : false,
     "DicomPort" : 4242,
     "DefaultEncoding" : "Latin1",
@@ -59,7 +59,7 @@
   
     "AuthenticationEnabled" : true,
     "RegisteredUsers" : {
-      "orthanc_admin": "helloaide123"
+      "${ORTHANC_ADMIN_USER}": "${ORTHANC_ADMIN_PASS}"
     },
   
     "DicomTlsEnabled" : false,
