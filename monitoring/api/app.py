@@ -787,31 +787,33 @@ def get_funnel():
                 -- Total studies that entered the pipeline
                 COUNT(*) as total_studies,
                 
-                -- Stage 1: Sent to MERCURE
-                COUNT(*) FILTER (WHERE mercure_sent_at IS NOT NULL) as mercure_attempted,
-                COUNT(*) FILTER (WHERE mercure_send_success = TRUE) as mercure_sent_ok,
-                COUNT(*) FILTER (WHERE mercure_send_success = FALSE) as mercure_sent_failed,
+                -- INPUT STAGE: Orthanc
+                COUNT(*) FILTER (WHERE mercure_sent_at IS NOT NULL) as sent_to_mercure,
                 
-                -- Stage 2: AI Results received
+                -- PROCESSING STAGE: Mercure
+                COUNT(*) FILTER (WHERE mercure_received_at IS NOT NULL) as mercure_received,
+                COUNT(*) FILTER (WHERE mercure_processing_started_at IS NOT NULL) as mercure_processing,
+                COUNT(*) FILTER (WHERE mercure_processing_completed_at IS NOT NULL) as mercure_completed,
+                
+                -- OUTPUT STAGE: AI Results received + Destinations
                 COUNT(*) FILTER (WHERE ai_results_received = TRUE) as ai_results_received,
-                COUNT(*) FILTER (WHERE mercure_send_success = TRUE AND ai_results_received = FALSE) as ai_results_waiting,
                 
-                -- Stage 3a: LPCH Router
+                -- Destination routing - LPCH Router
                 COUNT(*) FILTER (WHERE lpch_sent_at IS NOT NULL) as lpch_attempted,
                 COUNT(*) FILTER (WHERE lpch_send_success = TRUE) as lpch_sent_ok,
                 COUNT(*) FILTER (WHERE lpch_send_success = FALSE) as lpch_sent_failed,
                 
-                -- Stage 3b: LPCH T Router
+                -- Destination routing - LPCH T Router
                 COUNT(*) FILTER (WHERE lpcht_sent_at IS NOT NULL) as lpcht_attempted,
                 COUNT(*) FILTER (WHERE lpcht_send_success = TRUE) as lpcht_sent_ok,
                 COUNT(*) FILTER (WHERE lpcht_send_success = FALSE) as lpcht_sent_failed,
                 
-                -- Stage 3c: MODLINK
+                -- Destination routing - MODLINK
                 COUNT(*) FILTER (WHERE modlink_sent_at IS NOT NULL) as modlink_attempted,
                 COUNT(*) FILTER (WHERE modlink_send_success = TRUE) as modlink_sent_ok,
                 COUNT(*) FILTER (WHERE modlink_send_success = FALSE) as modlink_sent_failed,
                 
-                -- Fully complete (AI results + all destinations)
+                -- Pipeline completion: AI results + all destinations succeeded
                 COUNT(*) FILTER (WHERE 
                     ai_results_received = TRUE AND
                     lpch_send_success = TRUE AND
@@ -826,8 +828,8 @@ def get_funnel():
         # No studies found, return empty stats
         cur.execute("""
             SELECT 
-                0 as total_studies, 0 as mercure_attempted, 0 as mercure_sent_ok, 0 as mercure_sent_failed,
-                0 as ai_results_received, 0 as ai_results_waiting, 0 as lpch_attempted, 0 as lpch_sent_ok,
+                0 as total_studies, 0 as sent_to_mercure, 0 as mercure_received, 0 as mercure_processing,
+                0 as mercure_completed, 0 as ai_results_received, 0 as lpch_attempted, 0 as lpch_sent_ok,
                 0 as lpch_sent_failed, 0 as lpcht_attempted, 0 as lpcht_sent_ok, 0 as lpcht_sent_failed,
                 0 as modlink_attempted, 0 as modlink_sent_ok, 0 as modlink_sent_failed, 0 as fully_complete
         """)
@@ -857,53 +859,85 @@ def get_funnel():
         'time_range_hours': hours,
         'total_studies': total,
         
-        # Main pipeline stages (top-level)
+        # Complete pipeline with all stages
         'pipeline': [
+            # INPUT STAGE
             {
-                'name': 'Studies Received',
+                'stage': 'INPUT',
+                'name': 'Studies in Orthanc',
                 'count': total,
                 'percent': 100,
                 'status': 'neutral'
             },
             {
-                'name': 'Sent to MERCURE',
-                'count': stats['mercure_sent_ok'] or 0,
-                'percent': pct(stats['mercure_sent_ok'] or 0),
-                'failed': stats['mercure_sent_failed'] or 0,
-                'status': 'success' if (stats['mercure_sent_failed'] or 0) == 0 else 'warning'
+                'stage': 'INPUT',
+                'name': 'Sent to Mercure',
+                'count': stats['sent_to_mercure'] or 0,
+                'percent': pct(stats['sent_to_mercure'] or 0),
+                'status': 'success' if (stats['sent_to_mercure'] or 0) > 0 else 'neutral'
+            },
+            
+            # PROCESSING STAGE (Mercure)
+            {
+                'stage': 'PROCESSING',
+                'name': 'Received at Mercure',
+                'count': stats['mercure_received'] or 0,
+                'percent': pct(stats['mercure_received'] or 0, stats['sent_to_mercure'] or 1),
+                'base_count': stats['sent_to_mercure'] or 0,
+                'status': 'success' if (stats['mercure_received'] or 0) > 0 else 'waiting'
             },
             {
-                'name': 'AI Results Back',
+                'stage': 'PROCESSING',
+                'name': 'Processing at Mercure',
+                'count': stats['mercure_processing'] or 0,
+                'percent': pct(stats['mercure_processing'] or 0, stats['mercure_received'] or 1),
+                'base_count': stats['mercure_received'] or 0,
+                'status': 'success' if (stats['mercure_processing'] or 0) > 0 else 'waiting'
+            },
+            {
+                'stage': 'PROCESSING',
+                'name': 'Processing Completed',
+                'count': stats['mercure_completed'] or 0,
+                'percent': pct(stats['mercure_completed'] or 0, stats['mercure_processing'] or 1),
+                'base_count': stats['mercure_processing'] or 0,
+                'status': 'success' if (stats['mercure_completed'] or 0) > 0 else 'waiting'
+            },
+            
+            # OUTPUT STAGE
+            {
+                'stage': 'OUTPUT',
+                'name': 'AI Results Back to Orthanc',
                 'count': ai_received,
-                'percent': pct(ai_received),
-                'waiting': stats['ai_results_waiting'] or 0,
-                'status': 'success' if (stats['ai_results_waiting'] or 0) == 0 else 'waiting'
+                'percent': pct(ai_received, stats['mercure_completed'] or 1),
+                'base_count': stats['mercure_completed'] or 0,
+                'status': 'success' if ai_received > 0 else 'waiting'
             },
             {
+                'stage': 'OUTPUT',
                 'name': 'Routed to Destinations',
                 'count': destinations_all_success,
-                'percent': pct(destinations_all_success, ai_received),
+                'percent': pct(destinations_all_success, ai_received or 1),
                 'base_count': ai_received,
                 'failed': destinations_any_failed,
                 'status': 'success' if destinations_any_failed == 0 and ai_received > 0 else ('warning' if destinations_any_failed > 0 else 'neutral'),
-                # Children destinations
+                # Destination routing details
                 'children': [
                     {
                         'name': 'LPCH',
                         'count': stats['lpch_sent_ok'] or 0,
-                        'percent': pct(stats['lpch_sent_ok'] or 0, ai_received),
+                        'percent': pct(stats['lpch_sent_ok'] or 0, ai_received or 1),
                         'failed': stats['lpch_sent_failed'] or 0
                     },
                     {
                         'name': 'LPCHT',
                         'count': stats['lpcht_sent_ok'] or 0,
-                        'percent': pct(stats['lpcht_sent_ok'] or 0, ai_received),
+                        'percent': pct(stats['lpcht_sent_ok'] or 0, ai_received or 1),
                         'failed': stats['lpcht_sent_failed'] or 0
                     },
                     {
                         'name': 'MODLINK',
                         'count': stats['modlink_sent_ok'] or 0,
-                        'percent': pct(stats['modlink_sent_ok'] or 0, ai_received),
+                        'percent': pct(stats['modlink_sent_ok'] or 0, ai_received or 1),
                         'failed': stats['modlink_sent_failed'] or 0
                     }
                 ]
