@@ -1365,40 +1365,48 @@ def sync_workflows_from_mercure():
             os.environ.get('ORTHANC_PASSWORD', '')
         )
         
+        # First, build a map of StudyInstanceUID -> study_id from Orthanc
+        orthanc_studies = {}
+        try:
+            resp = requests.get(
+                f"{orthanc_api_url}/studies",
+                auth=orthanc_auth,
+                timeout=5
+            )
+            if resp.status_code == 200:
+                study_ids = resp.json()  # Array of study IDs (strings)
+                for study_id in study_ids:
+                    try:
+                        study_resp = requests.get(
+                            f"{orthanc_api_url}/studies/{study_id}",
+                            auth=orthanc_auth,
+                            timeout=5
+                        )
+                        if study_resp.status_code == 200:
+                            study_data = study_resp.json()
+                            study_uid = study_data.get('MainDicomTags', {}).get('StudyInstanceUID')
+                            if study_uid:
+                                orthanc_studies[study_uid] = {
+                                    'study_id': study_id,
+                                    'data': study_data
+                                }
+                    except requests.RequestException:
+                        pass  # Skip this study
+        except requests.RequestException:
+            pass  # Can't reach Orthanc, skip entire sync
+        
+        # Now match Mercure series with Orthanc studies
         for series_record in mercure_series:
             study_uid = series_record['study_uid']
             
-            # Find study ID in Orthanc by UID
-            try:
-                resp = requests.get(
-                    f"{orthanc_api_url}/tools/find",
-                    json={'Level': 'Study', 'StudyInstanceUID': study_uid},
-                    auth=orthanc_auth,
-                    timeout=5
-                )
-                if resp.status_code != 200 or not resp.json():
-                    continue  # Study not in Orthanc, skip
-                
-                orthanc_study = resp.json()[0] if resp.json() else None
-                if not orthanc_study:
-                    continue
-                
-                study_id = orthanc_study.get('ID')
-                
-                # Get study details from Orthanc
-                resp = requests.get(
-                    f"{orthanc_api_url}/studies/{study_id}",
-                    auth=orthanc_auth,
-                    timeout=5
-                )
-                if resp.status_code != 200:
-                    continue
-                
-                orthanc_study_data = resp.json()
-                patient_name = orthanc_study_data.get('PatientMainDicomTags', {}).get('PatientName', series_record['tag_patientname'])
-                
-            except requests.RequestException:
-                continue  # Can't reach Orthanc, skip this study
+            # Check if this study exists in Orthanc
+            if study_uid not in orthanc_studies:
+                continue  # Study not in Orthanc, skip
+            
+            orthanc_study_info = orthanc_studies[study_uid]
+            study_id = orthanc_study_info['study_id']
+            study_data = orthanc_study_info['data']
+            patient_name = study_data.get('PatientMainDicomTags', {}).get('PatientName', series_record['tag_patientname'])
             
             # Check if workflow already exists
             workflow_cur.execute(
