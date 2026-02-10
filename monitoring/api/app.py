@@ -916,7 +916,7 @@ def get_funnel():
                 'stage': 'INPUT',
                 'name': 'Sent to Mercure',
                 'count': stats['sent_to_mercure'] or 0,
-                'percent': pct(stats['sent_to_mercure'] or 0),
+                'percent': pct(stats['sent_to_mercure'] or 0, total or 1),
                 'status': 'success' if (stats['sent_to_mercure'] or 0) > 0 else 'neutral'
             },
             
@@ -925,8 +925,7 @@ def get_funnel():
                 'stage': 'PROCESSING',
                 'name': 'Received at Mercure',
                 'count': stats['mercure_received'] or 0,
-                'percent': pct(stats['mercure_received'] or 0, stats['sent_to_mercure'] or 1),
-                'base_count': stats['sent_to_mercure'] or 0,
+                'percent': pct(stats['mercure_received'] or 0, total or 1),
                 'status': 'success' if (stats['mercure_received'] or 0) > 0 else 'waiting'
             },
             
@@ -935,16 +934,14 @@ def get_funnel():
                 'stage': 'OUTPUT',
                 'name': 'AI Results Back to Orthanc',
                 'count': ai_received,
-                'percent': pct(ai_received, stats['mercure_received'] or 1),
-                'base_count': stats['mercure_received'] or 0,
+                'percent': pct(ai_received, total or 1),
                 'status': 'success' if ai_received > 0 else 'waiting'
             },
             {
                 'stage': 'OUTPUT',
                 'name': 'Routed to Destinations',
                 'count': destinations_all_success,
-                'percent': pct(destinations_all_success, ai_received or 1),
-                'base_count': ai_received,
+                'percent': pct(destinations_all_success, total or 1),
                 'failed': destinations_any_failed,
                 'status': 'success' if destinations_any_failed == 0 and ai_received > 0 else ('warning' if destinations_any_failed > 0 else 'neutral'),
                 # Destination routing details
@@ -952,19 +949,19 @@ def get_funnel():
                     {
                         'name': 'LPCH',
                         'count': stats['lpch_sent_ok'] or 0,
-                        'percent': pct(stats['lpch_sent_ok'] or 0, ai_received or 1),
+                        'percent': pct(stats['lpch_sent_ok'] or 0, total or 1),
                         'failed': stats['lpch_sent_failed'] or 0
                     },
                     {
                         'name': 'LPCHT',
                         'count': stats['lpcht_sent_ok'] or 0,
-                        'percent': pct(stats['lpcht_sent_ok'] or 0, ai_received or 1),
+                        'percent': pct(stats['lpcht_sent_ok'] or 0, total or 1),
                         'failed': stats['lpcht_sent_failed'] or 0
                     },
                     {
                         'name': 'MODLINK',
                         'count': stats['modlink_sent_ok'] or 0,
-                        'percent': pct(stats['modlink_sent_ok'] or 0, ai_received or 1),
+                        'percent': pct(stats['modlink_sent_ok'] or 0, total or 1),
                         'failed': stats['modlink_sent_failed'] or 0
                     }
                 ]
