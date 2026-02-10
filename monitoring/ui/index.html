@@ -1000,13 +1000,13 @@
 <script>
 // Configuration - can be overridden by setting window.RADWATCH_CONFIG before this script
 const CONFIG = window.RADWATCH_CONFIG || {
-    // Orthanc server (external)
-    orthancUrl: 'http://' + window.location.hostname + ':8042',
-    orthancWebUrl: 'http://' + window.location.hostname + ':8042',
+    // All requests proxied through nginx to avoid CORS issues
+    orthancUrl: window.location.protocol + '//' + window.location.host + '/orthanc',
+    orthancWebUrl: window.location.protocol + '//' + window.location.host + '/orthanc',
     // OHIF viewer (usually served by Orthanc)
-    ohifUrl: 'http://' + window.location.hostname + ':8042/ohif/',
+    ohifUrl: window.location.protocol + '//' + window.location.host + '/orthanc/ohif/',
     // Grafana (for metrics)
-    grafanaUrl: 'http://' + window.location.hostname + ':3000',
+    grafanaUrl: window.location.protocol + '//' + window.location.host.split(':')[0] + ':9032',
     // Workflow API (proxied through nginx at /api/)
     apiBaseUrl: '/api'
 };
