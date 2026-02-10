@@ -776,26 +776,29 @@ def get_workflow(study_id):
 def get_funnel():
     """Get funnel/Sankey data showing flow through pipeline stages.
     
-    Filters out studies that have been deleted from Orthanc.
+    Gets all studies from Orthanc (not just tracked ones), so newly
+    uploaded studies appear immediately even before /track/start is called.
     """
     hours = request.args.get('hours', 24, type=int)
     
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    # First, get all studies in the time window
-    cur.execute("""
-        SELECT study_id FROM study_workflows
-        WHERE created_at > NOW() - INTERVAL '%s hours'
-    """, (hours,))
-    
-    all_studies = [row['study_id'] for row in cur.fetchall()]
-    
-    # Filter: only studies that still exist in Orthanc
-    # Use 172.17.0.1 (Docker host gateway on Linux) to reach Orthanc API
+    # Get all studies from Orthanc (this includes newly uploaded studies)
     orthanc_api_url = os.environ.get('ORTHANC_API_URL', 'http://172.17.0.1:9011')
-    existing_study_ids = []
-    for study_id in all_studies:
+    try:
+        resp = requests.get(
+            f"{orthanc_api_url}/studies",
+            timeout=5,
+            auth=(
+                os.environ.get('ORTHANC_USERNAME', ''),
+                os.environ.get('ORTHANC_PASSWORD', '')
+            )
+        )
+        orthanc_studies_raw = resp.json() if resp.status_code == 200 else []
+    except requests.RequestException:
+        orthanc_studies_raw = []
+    
+    # Map Orthanc study IDs to their full info
+    all_studies = []
+    for study_id in orthanc_studies_raw:
         try:
             resp = requests.get(
                 f"{orthanc_api_url}/studies/{study_id}",
@@ -806,10 +809,11 @@ def get_funnel():
                 )
             )
             if resp.status_code == 200:
-                existing_study_ids.append(study_id)
+                all_studies.append(study_id)
         except requests.RequestException:
-            # Orthanc not reachable, include the study anyway
-            existing_study_ids.append(study_id)
+            all_studies.append(study_id)  # Include even if we can't get details
+    
+    existing_study_ids = all_studies
     
     # Now query stats only for existing studies
     if existing_study_ids:
