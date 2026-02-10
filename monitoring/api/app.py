@@ -266,9 +266,9 @@ def enrich_workflows_from_mercure():
                 time.sleep(30)
                 continue
             
+            # Use a fresh connection for reading pending studies
             workflow_conn = get_db()
             workflow_cur = workflow_conn.cursor(cursor_factory=RealDictCursor)
-            bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
             
             # Find studies that were sent to Mercure but don't have full processing info
             workflow_cur.execute("""
@@ -282,10 +282,13 @@ def enrich_workflows_from_mercure():
             """)
             
             pending_studies = workflow_cur.fetchall()
+            workflow_cur.close()
+            workflow_conn.close()
             
             if pending_studies:
                 print(f"[MercureEnricher] Enriching {len(pending_studies)} studies from Bookkeeper...")
             
+            # Process each study with its own transaction
             for study in pending_studies:
                 study_uid = study['study_instance_uid']
                 study_id = study['study_id']
@@ -295,6 +298,8 @@ def enrich_workflows_from_mercure():
                 
                 try:
                     # Query Bookkeeper for task events for this study
+                    bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
+                    
                     bookkeeper_cur.execute("""
                         SELECT 
                             event,
@@ -316,6 +321,7 @@ def enrich_workflows_from_mercure():
                     
                     series_info = bookkeeper_cur.fetchone()
                     mercure_received_at = series_info['received_at'] if series_info else None
+                    bookkeeper_cur.close()
                     
                     # Extract processing timestamps from events
                     processing_started = None
@@ -335,33 +341,46 @@ def enrich_workflows_from_mercure():
                         if event_type == 'COMPLETED' and processing_completed is None:
                             processing_completed = event_time
                     
-                    # Update workflow with Mercure processing info
-                    workflow_cur.execute("""
-                        UPDATE study_workflows 
-                        SET 
-                            mercure_received_at = COALESCE(mercure_received_at, %s),
-                            mercure_processing_started_at = COALESCE(mercure_processing_started_at, %s),
-                            mercure_processing_completed_at = COALESCE(mercure_processing_completed_at, %s),
-                            updated_at = NOW()
-                        WHERE study_id = %s
-                    """, (mercure_received_at, processing_started, processing_completed, study_id))
+                    # Create a new connection and transaction for each update
+                    update_conn = get_db()
+                    update_cur = update_conn.cursor()
                     
-                    workflow_conn.commit()
-                    
-                    print(f"[MercureEnricher] ✓ {study_uid[:12]}... - "
-                          f"received: {mercure_received_at}, "
-                          f"processing: {processing_started}")
+                    try:
+                        # Update workflow with Mercure processing info
+                        update_cur.execute("""
+                            UPDATE study_workflows 
+                            SET 
+                                mercure_received_at = COALESCE(mercure_received_at, %s),
+                                mercure_processing_started_at = COALESCE(mercure_processing_started_at, %s),
+                                mercure_processing_completed_at = COALESCE(mercure_processing_completed_at, %s),
+                                updated_at = NOW()
+                            WHERE study_id = %s
+                        """, (mercure_received_at, processing_started, processing_completed, study_id))
+                        
+                        update_conn.commit()
+                        
+                        print(f"[MercureEnricher] ✓ {study_uid[:12]}... - "
+                              f"received: {mercure_received_at}, "
+                              f"processing: {processing_started}")
+                    except Exception as update_err:
+                        update_conn.rollback()
+                        print(f"[MercureEnricher] Failed to update {study_uid}: {update_err}")
+                    finally:
+                        update_cur.close()
+                        update_conn.close()
                     
                 except Exception as e:
                     print(f"[MercureEnricher] Error enriching {study_uid}: {e}")
             
-            bookkeeper_cur.close()
+            # Close bookkeeper connection at the end of the loop
             bookkeeper_conn.close()
-            workflow_cur.close()
-            workflow_conn.close()
             
         except Exception as e:
-            print(f"[MercureEnricher] Error: {e}")
+            print(f"[MercureEnricher] Fatal error: {e}")
+            try:
+                bookkeeper_conn.close()
+            except:
+                pass
         
         time.sleep(30)  # Query Bookkeeper every 30 seconds
 
