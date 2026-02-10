@@ -808,6 +808,8 @@ def get_funnel():
                 
                 -- INPUT STAGE: Orthanc
                 COUNT(*) FILTER (WHERE mercure_sent_at IS NOT NULL) as sent_to_mercure,
+                COUNT(*) FILTER (WHERE mercure_send_success = TRUE) as mercure_sent_ok,
+                COUNT(*) FILTER (WHERE mercure_send_success = FALSE) as mercure_sent_failed,
                 
                 -- PROCESSING STAGE: Mercure
                 COUNT(*) FILTER (WHERE mercure_received_at IS NOT NULL) as mercure_received,
@@ -816,6 +818,7 @@ def get_funnel():
                 
                 -- OUTPUT STAGE: AI Results received + Destinations
                 COUNT(*) FILTER (WHERE ai_results_received = TRUE) as ai_results_received,
+                COUNT(*) FILTER (WHERE mercure_send_success = TRUE AND ai_results_received = FALSE) as ai_results_waiting,
                 
                 -- Destination routing - LPCH Router
                 COUNT(*) FILTER (WHERE lpch_sent_at IS NOT NULL) as lpch_attempted,
@@ -847,9 +850,10 @@ def get_funnel():
         # No studies found, return empty stats
         cur.execute("""
             SELECT 
-                0 as total_studies, 0 as sent_to_mercure, 0 as mercure_received, 0 as mercure_processing,
-                0 as mercure_completed, 0 as ai_results_received, 0 as lpch_attempted, 0 as lpch_sent_ok,
-                0 as lpch_sent_failed, 0 as lpcht_attempted, 0 as lpcht_sent_ok, 0 as lpcht_sent_failed,
+                0 as total_studies, 0 as sent_to_mercure, 0 as mercure_sent_ok, 0 as mercure_sent_failed,
+                0 as mercure_received, 0 as mercure_processing, 0 as mercure_completed, 0 as ai_results_received,
+                0 as ai_results_waiting, 0 as lpch_attempted, 0 as lpch_sent_ok, 0 as lpch_sent_failed,
+                0 as lpcht_attempted, 0 as lpcht_sent_ok, 0 as lpcht_sent_failed,
                 0 as modlink_attempted, 0 as modlink_sent_ok, 0 as modlink_sent_failed, 0 as fully_complete
         """)
     
