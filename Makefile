@@ -1,7 +1,7 @@
 # Pediatric Leg Length AI - Deployment Makefile
 # Master orchestration for all components
 
-.PHONY: help status start stop restart logs setup clean
+.PHONY: help status start stop restart logs setup setup-config init clean
 
 # Colors for output
 CYAN := \033[36m
@@ -33,12 +33,16 @@ help:
 	@echo "  make monitoring-stop  - Stop monitoring stack"
 	@echo "  make monitoring-logs  - Show monitoring logs"
 	@echo ""
-	@echo "$(GREEN)Setup:$(RESET)"
-	@echo "  make setup           - Initial setup for all components"
-	@echo "  make setup-orthanc   - Setup Orthanc only"
-	@echo "  make setup-mercure   - Setup Mercure only"
-	@echo "  make setup-ai        - Setup AI module only"
-	@echo "  make setup-monitoring - Setup monitoring only"
+	@echo "$(GREEN)Setup (run in order):$(RESET)"
+	@echo "  make init            - Create config.env from template"
+	@echo "  nano config.env      - Edit passwords and paths"
+	@echo "  make setup           - Generate all component configs"
+	@echo ""
+	@echo "$(GREEN)Component Setup:$(RESET)"
+	@echo "  make setup-orthanc   - Setup Orthanc directories"
+	@echo "  make setup-mercure   - Setup Mercure"
+	@echo "  make setup-ai        - Setup AI module"
+	@echo "  make setup-monitoring - Setup monitoring"
 
 # =============================================================================
 # STATUS
@@ -151,24 +155,28 @@ setup-monitoring:
 # SETUP ALL
 # =============================================================================
 
-setup: 
-	@echo "$(CYAN)====== INITIAL SETUP ======$(RESET)"
-	@echo ""
-	@echo "Setting up Orthanc..."
-	@cd orthanc && ([ -f .env ] || cp config/env.template .env) && echo "  ✓ Orthanc .env created"
-	@echo ""
-	@echo "Setting up Monitoring..."
-	@cd monitoring && ([ -f .env ] || cp env.template .env) && echo "  ✓ Monitoring .env created"
-	@echo ""
-	@echo "$(GREEN)Setup complete!$(RESET)"
-	@echo ""
-	@echo "$(YELLOW)Next steps:$(RESET)"
-	@echo "  1. Edit orthanc/.env to configure DICOM settings"
-	@echo "  2. Edit monitoring/.env to configure URLs"
-	@echo "  3. Build AI module: make ai-build"
-	@echo "  4. Start services: make start-all"
-	@echo ""
-	@echo "See README.md for detailed configuration instructions."
+# Create config.env from template (one-time)
+init:
+	@if [ -f config.env ]; then \
+		echo "$(YELLOW)config.env already exists. Edit it or delete to recreate.$(RESET)"; \
+	else \
+		cp config.env.template config.env; \
+		chmod 600 config.env; \
+		echo "$(GREEN)Created config.env$(RESET)"; \
+		echo ""; \
+		echo "$(YELLOW)Next: Edit config.env with your passwords, then run 'make setup'$(RESET)"; \
+	fi
+
+# Generate all component configs from config.env
+setup: setup-config
+
+setup-config:
+	@if [ ! -f config.env ]; then \
+		echo "$(RED)ERROR: config.env not found!$(RESET)"; \
+		echo "Run 'make init' first, then edit config.env"; \
+		exit 1; \
+	fi
+	@./scripts/setup-config.sh
 
 # =============================================================================
 # UTILITIES
