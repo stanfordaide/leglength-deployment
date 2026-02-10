@@ -21,13 +21,16 @@ local Config = {}
 -- The routing-api service runs inside Docker Compose.
 
 Config.API = {
-    -- Base URL for the routing tracking API
-    -- Inside Docker: containers can reach each other by service name
+    -- Base URL for the workflow tracking API
+    -- The API runs in the monitoring stack on port 9031
+    -- We use host.docker.internal to reach it from inside Docker
     -- 
-    -- TODO: Verify this URL works from inside the orthanc container
-    --       Test: docker exec orthanc-server curl http://routing-api:5000/health
+    -- To verify: docker exec orthanc-server curl http://host.docker.internal:9031/health
+    -- 
+    -- NOTE: This can be overridden via environment variable WORKFLOW_API_URL
+    --       Set in orthanc/.env if needed
     --
-    BASE_URL = "http://routing-api:5000",
+    BASE_URL = os.getenv("WORKFLOW_API_URL") or "http://host.docker.internal:9031",
     
     -- Specific endpoints (built from BASE_URL)
     -- These are defined here so you can see what's available

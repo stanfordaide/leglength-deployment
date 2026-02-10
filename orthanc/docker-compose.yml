@@ -3,13 +3,15 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # PORT SCHEME (9010 series for Orthanc):
-#   - operator-ui  : Operator Dashboard (port 9010)
 #   - orthanc      : PACS Server + API (port 9011, DICOM 4242)
 #   - ohif         : DICOM Viewer (port 9012)
 #   - orthanc-db   : PostgreSQL Database (port 9013)
-#   - routing-api  : Routing Statistics API (port 9014)
 #
-# NOTE: Grafana moved to monitoring stack (port 9032) for unified dashboards
+# UI components are in the monitoring stack:
+#   - workflow-ui  : Workflow Dashboard (port 9030)
+#
+# NOTE: Workflow tracking moved to monitoring stack (workflow-api on port 9031)
+#       Grafana moved to monitoring stack (port 9032) for unified dashboards
 #
 # Quick start:
 #   cp config/env.template .env
@@ -19,29 +21,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # OPERATOR DASHBOARD - Main entry point for operators
-  # ─────────────────────────────────────────────────────────────────────────────
-  operator-ui:
-    image: nginx:alpine
-    container_name: orthanc-operator-ui
-    ports:
-      - "${OPERATOR_UI_PORT:-9010}:80"
-    volumes:
-      - ./ui:/usr/share/nginx/html:ro
-      - ./ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - orthanc
-    environment:
-      - TZ=${TZ:-America/Los_Angeles}
-    restart: always
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
-
   # ─────────────────────────────────────────────────────────────────────────────
   # ORTHANC - PACS Server
   # ─────────────────────────────────────────────────────────────────────────────
@@ -66,8 +45,8 @@ services:
     depends_on:
       orthanc-db:
         condition: service_healthy
-      routing-api:
-        condition: service_healthy
+    # NOTE: Orthanc Lua scripts call the monitoring stack's workflow-api
+    # via host.docker.internal:${WORKFLOW_API_PORT:-9031}
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8042/system > /dev/null || exit 1"]
@@ -120,42 +99,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # ROUTING API - Tracks routing statistics in PostgreSQL
-  # ─────────────────────────────────────────────────────────────────────────────
-  routing-api:
-    build: ./api
-    container_name: orthanc-routing-api
-    ports:
-      - "${ROUTING_API_PORT:-9014}:5000"
-    environment:
-      # Orthanc Database connection
-      - DB_HOST=orthanc-db
-      - DB_PORT=5432
-      - DB_NAME=orthanc
-      - DB_USER=${POSTGRES_USER:-orthanc}
-      - DB_PASS=${POSTGRES_PASSWORD:-ChangeThisPassword}
-      # Orthanc connection (for job polling)
-      - ORTHANC_URL=http://orthanc:8042
-      - ORTHANC_USER=${ORTHANC_USERNAME:-orthanc_admin}
-      - ORTHANC_PASS=${ORTHANC_PASSWORD:-helloaide123}
-      - JOB_POLL_INTERVAL=10
-      - TZ=${TZ:-America/Los_Angeles}
-    depends_on:
-      orthanc-db:
-        condition: service_healthy
-      # Note: Don't depend on orthanc - causes circular dependency
-      # routing-api should start before orthanc so Lua can call it
-    networks:
-      - default
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECRETS

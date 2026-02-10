@@ -1,7 +1,29 @@
 """
-Orthanc Routing Workflow Tracker
-Tracks studies through the AI processing pipeline with funnel visualization
-Includes background job poller for accurate send status tracking
+Workflow Tracking API - Monitoring Stack
+=========================================
+
+Tracks studies through the AI processing pipeline with funnel visualization.
+This is the CANONICAL workflow tracker - runs in the monitoring stack.
+
+ARCHITECTURE:
+  - Own Database (workflow-db): Stores our workflow tracking state
+  - Mercure Bookkeeper (read-only): Query Mercure processing status
+  - Orthanc REST API: Query Orthanc status (not direct DB access)
+
+BOOKKEEPER PATTERN:
+  Mercure's Bookkeeper is a RESTful service + PostgreSQL database designed
+  for analytics. It stores:
+    - dicom_series: All received series with DICOM tags
+    - series_events: Processing events (dispatch, discard, etc.)  
+    - dicom_files: Individual DICOM file tracking
+    - mercure_events: System events (startup, errors)
+  
+  We READ from Bookkeeper for Mercure status enrichment.
+  We WRITE to our own workflow-db for pipeline tracking.
+
+ENDPOINTS CALLED BY:
+  - Orthanc Lua scripts: /track/* endpoints for workflow events
+  - Workflow UI: /workflows, /funnel endpoints for dashboard data
 """
 
 import os
@@ -17,19 +39,25 @@ from psycopg2.extras import RealDictCursor
 app = Flask(__name__)
 CORS(app)
 
-# Database connection from environment (Orthanc's DB)
-DB_HOST = os.environ.get('DB_HOST', 'orthanc-db')
-DB_PORT = os.environ.get('DB_PORT', '5432')
-DB_NAME = os.environ.get('DB_NAME', 'orthanc')
-DB_USER = os.environ.get('DB_USER', 'orthanc')
-DB_PASS = os.environ.get('DB_PASS', 'ChangeThisPassword')
+# ═══════════════════════════════════════════════════════════════════════════════
+# DATABASE CONNECTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# Mercure Database connection (for AI processing status tracking)
-MERCURE_DB_HOST = os.environ.get('MERCURE_DB_HOST', 'mercure_db_1')
-MERCURE_DB_PORT = os.environ.get('MERCURE_DB_PORT', '5432')
-MERCURE_DB_NAME = os.environ.get('MERCURE_DB_NAME', 'mercure')
-MERCURE_DB_USER = os.environ.get('MERCURE_DB_USER', 'mercure')
-MERCURE_DB_PASS = os.environ.get('MERCURE_DB_PASS', '')
+# Primary database for workflow tracking (our own database)
+DB_HOST = os.environ.get('DB_HOST', 'workflow-db')
+DB_PORT = os.environ.get('DB_PORT', '5432')
+DB_NAME = os.environ.get('DB_NAME', 'workflow_tracking')
+DB_USER = os.environ.get('DB_USER', 'workflow')
+DB_PASS = os.environ.get('DB_PASS', 'workflow123')
+
+# Mercure Bookkeeper database (READ-ONLY for analytics/enrichment)
+# This is Mercure's analytics database, NOT its internal operational DB
+# Supports both BOOKKEEPER_DB_* and legacy MERCURE_DB_* env vars
+BOOKKEEPER_DB_HOST = os.environ.get('BOOKKEEPER_DB_HOST') or os.environ.get('MERCURE_DB_HOST', '')
+BOOKKEEPER_DB_PORT = os.environ.get('BOOKKEEPER_DB_PORT') or os.environ.get('MERCURE_DB_PORT', '5432')
+BOOKKEEPER_DB_NAME = os.environ.get('BOOKKEEPER_DB_NAME') or os.environ.get('MERCURE_DB_NAME', 'mercure')
+BOOKKEEPER_DB_USER = os.environ.get('BOOKKEEPER_DB_USER') or os.environ.get('MERCURE_DB_USER', 'mercure')
+BOOKKEEPER_DB_PASS = os.environ.get('BOOKKEEPER_DB_PASS') or os.environ.get('MERCURE_DB_PASS', '')
 
 # Orthanc connection for job polling
 ORTHANC_URL = os.environ.get('ORTHANC_URL', 'http://orthanc:8042')
@@ -41,21 +69,37 @@ JOB_POLL_INTERVAL = int(os.environ.get('JOB_POLL_INTERVAL', '10'))  # seconds
 
 
 def get_db():
-    """Get connection to Orthanc's PostgreSQL database"""
+    """Get connection to our workflow tracking PostgreSQL database.
+    
+    This is OUR database (workflow-db), not Orthanc's or Mercure's.
+    We store workflow state here: study_workflows, pending_jobs tables.
+    """
     return psycopg2.connect(
         host=DB_HOST, port=DB_PORT, database=DB_NAME,
         user=DB_USER, password=DB_PASS
     )
 
 
-def get_mercure_db():
-    """Get connection to Mercure's PostgreSQL database for AI processing status"""
-    if not MERCURE_DB_PASS:
-        return None  # Mercure integration not configured
+def get_bookkeeper_db():
+    """Get READ-ONLY connection to Mercure's Bookkeeper database for analytics.
+    
+    Bookkeeper stores processing history in tables:
+      - dicom_series: series info with DICOM tags (join key: series_uid)
+      - series_events: processing events per series
+      - dicom_files: individual DICOM files
+      - mercure_events: system events
+    
+    Returns None if not configured.
+    """
+    if not BOOKKEEPER_DB_PASS and not BOOKKEEPER_DB_HOST:
+        return None  # Bookkeeper integration not configured
     return psycopg2.connect(
-        host=MERCURE_DB_HOST, port=MERCURE_DB_PORT, database=MERCURE_DB_NAME,
-        user=MERCURE_DB_USER, password=MERCURE_DB_PASS
+        host=BOOKKEEPER_DB_HOST, port=BOOKKEEPER_DB_PORT, database=BOOKKEEPER_DB_NAME,
+        user=BOOKKEEPER_DB_USER, password=BOOKKEEPER_DB_PASS
     )
+
+# Backward compatibility alias
+get_mercure_db = get_bookkeeper_db
 
 
 def init_db():
@@ -786,25 +830,37 @@ def routing_stats_compat():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MERCURE STATUS ENDPOINTS (AI Processing Tracking)
+# MERCURE BOOKKEEPER ENDPOINTS (AI Processing Status via Bookkeeper)
+# ═══════════════════════════════════════════════════════════════════════════════
+# 
+# These endpoints query Mercure's Bookkeeper database (READ-ONLY) for:
+#   - Series processing status
+#   - Task events and errors
+#   - DICOM file tracking
+#
+# Bookkeeper Tables:
+#   - dicom_series: series_uid, study_uid, patient info, DICOM tags
+#   - series_events: series_uid, event type (dispatch/discard), timestamp
+#   - mercure_events: system events (startup, errors)
+#
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/mercure/status', methods=['GET'])
 def mercure_status():
-    """Check if Mercure integration is available"""
+    """Check if Mercure Bookkeeper integration is available"""
     try:
-        conn = get_mercure_db()
+        conn = get_bookkeeper_db()
         if conn is None:
             return jsonify({
                 'available': False,
-                'message': 'Mercure DB not configured. Set MERCURE_DB_PASS environment variable.'
+                'message': 'Bookkeeper not configured. Set BOOKKEEPER_DB_HOST/PASS environment variables.'
             })
         conn.close()
-        return jsonify({'available': True, 'message': 'Mercure DB connected'})
+        return jsonify({'available': True, 'message': 'Bookkeeper DB connected'})
     except Exception as e:
         return jsonify({
             'available': False,
-            'message': f'Mercure DB connection failed: {str(e)}'
+            'message': f'Bookkeeper DB connection failed: {str(e)}'
         })
 
 

@@ -28,16 +28,24 @@ services:
       - "${WORKFLOW_API_PORT:-9031}:5000"
     environment:
       - FLASK_ENV=production
+      # Our workflow tracking database
       - DB_HOST=workflow-db
       - DB_PORT=5432
       - DB_NAME=${WORKFLOW_DB_NAME:-workflow_tracking}
       - DB_USER=${WORKFLOW_DB_USER:-workflow}
       - DB_PASS=${WORKFLOW_DB_PASS:-workflow123}
-      # Orthanc connection (for actions)
+      # Orthanc REST API (for status queries, not direct DB)
       - ORTHANC_URL=${ORTHANC_URL:-http://host.docker.internal:9011}
       - ORTHANC_USER=${ORTHANC_USER:-orthanc}
       - ORTHANC_PASS=${ORTHANC_PASS:-orthanc}
-      # Mercure DB connection (for enriched tracking)
+      # Mercure Bookkeeper DB (READ-ONLY for analytics enrichment)
+      # Bookkeeper stores processing history for all studies
+      - BOOKKEEPER_DB_HOST=${BOOKKEEPER_DB_HOST:-}
+      - BOOKKEEPER_DB_PORT=${BOOKKEEPER_DB_PORT:-5432}
+      - BOOKKEEPER_DB_NAME=${BOOKKEEPER_DB_NAME:-mercure}
+      - BOOKKEEPER_DB_USER=${BOOKKEEPER_DB_USER:-mercure}
+      - BOOKKEEPER_DB_PASS=${BOOKKEEPER_DB_PASS:-}
+      # Legacy: Still support MERCURE_DB_* for backward compatibility
       - MERCURE_DB_HOST=${MERCURE_DB_HOST:-}
       - MERCURE_DB_PORT=${MERCURE_DB_PORT:-5432}
       - MERCURE_DB_NAME=${MERCURE_DB_NAME:-mercure}
