@@ -306,8 +306,8 @@ def enrich_workflows_from_mercure():
                         
                         bookkeeper_cur.execute("""
                             SELECT 
-                                event,
-                                time
+                                te.event,
+                                te.time
                             FROM task_events te
                             JOIN tasks t ON te.task_id = t.id
                             WHERE t.study_uid = %s
