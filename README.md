@@ -60,18 +60,23 @@ This single `config.env` file controls ALL passwords, ports, and settings for ev
 ### 2. Start Components (In Order)
 
 ```bash
-# 1. Start Monitoring (event sink - must be first)
+# 1. Monitoring (event sink - must be first)
 make monitoring-start
 
-# 2. Start Orthanc (DICOM server)
-cd orthanc && make setup && make start && cd ..
+# 2. Orthanc (DICOM server)
+cd orthanc
+make setup              # Creates directories (NEVER deletes data)
+sudo make start         # Start services
+cd ..
 
-# 3. Install Mercure (uses password from config.env automatically)
-make mercure-install
+# 3. Mercure (job dispatcher)
+make mercure-install    # Uses password from config.env
 
-# 4. Build AI Module
+# 4. AI Module
 make ai-build
 ```
+
+> **Note:** `make setup` in orthanc is safe - it only creates directories and never deletes existing data. For advanced options (fresh install, custom paths), use `make setup-wizard`.
 
 ### Access URLs
 
