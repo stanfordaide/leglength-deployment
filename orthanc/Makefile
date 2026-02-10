@@ -283,20 +283,33 @@ validate:
 	@echo "Run 'make setup' to fix any issues."
 
 # Manually seed default DICOM modalities
-# Run with: make seed-modalities (as owner of .env) or sudo make seed-modalities
+# Run with: sudo make seed-modalities
 seed-modalities:
 	@echo "🌱 Seeding default DICOM modalities..."
-	@bash -c 'source <(grep -E "^ORTHANC_(ADMIN_USER|ADMIN_PASS|WEB_PORT)=" .env); \
-		PORT=$${ORTHANC_WEB_PORT:-9011}; \
-		AUTH="$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS"; \
-		echo "  Using port $$PORT, user $$ORTHANC_ADMIN_USER"; \
-		curl -sf -u "$$AUTH" -X PUT "http://localhost:$$PORT/modalities/MERCURE" \
-			-H "Content-Type: application/json" -d "{\"AET\":\"MERCURE\",\"Host\":\"172.17.0.1\",\"Port\":11112}" && echo "  ✅ MERCURE" || echo "  ❌ MERCURE"; \
-		curl -sf -u "$$AUTH" -X PUT "http://localhost:$$PORT/modalities/LPCHROUTER" \
-			-H "Content-Type: application/json" -d "{\"AET\":\"LPCHROUTER\",\"Host\":\"10.50.133.21\",\"Port\":4000}" && echo "  ✅ LPCHROUTER" || echo "  ❌ LPCHROUTER"; \
-		curl -sf -u "$$AUTH" -X PUT "http://localhost:$$PORT/modalities/LPCHTROUTER" \
-			-H "Content-Type: application/json" -d "{\"AET\":\"LPCHTROUTER\",\"Host\":\"10.50.130.114\",\"Port\":4000}" && echo "  ✅ LPCHTROUTER" || echo "  ❌ LPCHTROUTER"; \
-		curl -sf -u "$$AUTH" -X PUT "http://localhost:$$PORT/modalities/MODLINK" \
-			-H "Content-Type: application/json" -d "{\"AET\":\"PSRTBONEAPP01\",\"Host\":\"10.251.201.59\",\"Port\":104}" && echo "  ✅ MODLINK" || echo "  ❌ MODLINK"'
+	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
+	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
+	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	 PORT=$${PORT:-9011} && \
+	 echo "  Using port $$PORT, user $$ORTHANC_ADMIN_USER" && \
+	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/MERCURE" \
+		-H "Content-Type: application/json" -d '{"AET":"MERCURE","Host":"172.17.0.1","Port":11112}' && echo "  ✅ MERCURE" || echo "  ❌ MERCURE"
+	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
+	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
+	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	 PORT=$${PORT:-9011} && \
+	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/LPCHROUTER" \
+		-H "Content-Type: application/json" -d '{"AET":"LPCHROUTER","Host":"10.50.133.21","Port":4000}' && echo "  ✅ LPCHROUTER" || echo "  ❌ LPCHROUTER"
+	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
+	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
+	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	 PORT=$${PORT:-9011} && \
+	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/LPCHTROUTER" \
+		-H "Content-Type: application/json" -d '{"AET":"LPCHTROUTER","Host":"10.50.130.114","Port":4000}' && echo "  ✅ LPCHTROUTER" || echo "  ❌ LPCHTROUTER"
+	@export ORTHANC_ADMIN_USER=$$(cat .env | grep ORTHANC_ADMIN_USER | cut -d= -f2) && \
+	 export ORTHANC_ADMIN_PASS=$$(cat .env | grep ORTHANC_ADMIN_PASS | cut -d= -f2) && \
+	 export PORT=$$(cat .env | grep ORTHANC_WEB_PORT | cut -d= -f2) && \
+	 PORT=$${PORT:-9011} && \
+	 curl -sf -u "$$ORTHANC_ADMIN_USER:$$ORTHANC_ADMIN_PASS" -X PUT "http://localhost:$$PORT/modalities/MODLINK" \
+		-H "Content-Type: application/json" -d '{"AET":"PSRTBONEAPP01","Host":"10.251.201.59","Port":104}' && echo "  ✅ MODLINK" || echo "  ❌ MODLINK"
 	@echo ""
 	@echo "Done! Verify with: curl -s -u user:pass http://localhost:9011/modalities | jq"
