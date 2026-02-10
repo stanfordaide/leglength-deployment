@@ -18,7 +18,7 @@ services:
     image: mercureimaging/mercure-ui${IMAGE_TAG}
     restart: always
     ports:
-      - "8000:8000"
+      - "9020:8000"  # Mercure UI - 9020 series
     volumes:
       - config:/opt/mercure/config
       - data:/opt/mercure/data
