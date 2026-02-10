@@ -1,50 +1,30 @@
-# =============================================================================
-# Leglength Deployment - Git Ignore
-# =============================================================================
-
-# Master config (contains passwords)
-config.env
-
-# Generated component configs (auto-generated from config.env)
-orthanc/.env
-monitoring/.env
-mercure/config-generated/
+# Environment files (contain secrets)
+.env
 
 # Data directories
 data/
 *.db
 
-# Logs
-*.log
-logs/
-
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-.Python
-*.egg-info/
-.eggs/
-*.egg
-venv/
+*.pyc
+*.pyo
 .venv/
-ENV/
+venv/
+
+# Docker
+.docker/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Docker
-.docker/
-
-# Backups
-backups/
-*.tar.gz
-*.bak
+# Logs
+*.log
+logs/

@@ -8,10 +8,10 @@ A **monorepo** consolidating 4 components of the pediatric leg length AI pipelin
 
 ```
 leglength-deployment/
-├── orthanc/                    # DICOM PACS server (from ../orthanc)
-├── mercure/                    # AI orchestration platform (from ../mercure)
+├── orthanc/                    # DICOM PACS server (dumb pipe)
+├── mercure/                    # AI orchestration platform
 ├── mercure-pediatric-leglength/  # AI processing module
-└── monitoring/                 # NEW: Unified dashboards & workflow tracking
+└── monitoring/                 # Unified dashboards, metrics, workflow tracking
 ```
 
 ## Architecture
@@ -22,7 +22,7 @@ leglength-deployment/
 │                 │      │                 │      │                 │
 │  DICOM Server   │─────▶│  Job Queue      │─────▶│  Leg Length     │
 │  Lua Routing    │◀─────│  Dispatcher     │◀─────│  Detector       │
-│                 │      │                 │      │  (PyTorch)      │
+│   (dumb pipe)   │      │                 │      │  (PyTorch)      │
 └────────┬────────┘      └────────┬────────┘      └─────────────────┘
          │                        │
          │     Events/Metrics     │
@@ -36,6 +36,31 @@ leglength-deployment/
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+**Key Design**: Orthanc is a "dumb pipe" - receives DICOM, routes via Lua rules. No direct integration with Mercure databases. Monitoring stack handles all job tracking via Grafana's PostgreSQL datasources.
+
+## Port Assignments (9000 Series)
+
+| Component | Service | Port |
+|-----------|---------|------|
+| **Orthanc** | Operator Dashboard | 9010 |
+| | Orthanc Web/API | 9011 |
+| | OHIF Viewer | 9012 |
+| | PostgreSQL | 9013 |
+| | Routing API | 9014 |
+| | **DICOM** | **4242** |
+| **Mercure** | Web UI | 9020 |
+| | Bookkeeper | 9021 |
+| | PostgreSQL | 9022 |
+| **Monitoring** | Workflow UI | 9030 |
+| | Workflow API | 9031 |
+| | Grafana | 9032 |
+| | Prometheus | 9033 |
+| | Alertmanager | 9034 |
+| | Node Exporter | 9035 |
+| | cAdvisor | 9036 |
+| | Pushgateway | 9037 |
+| | Graphite | 9038 |
+
 ## Data Flow
 
 1. **Study arrives** at Orthanc (DICOM port 4242)
@@ -46,133 +71,78 @@ leglength-deployment/
 6. **Results return** to Orthanc as new DICOM series
 7. **Lua detects AI results** - routes to final destination (PACS)
 
-## Key Design Decisions Made
+## Configuration
 
-### 1. Lua Routing Logic (`orthanc/lua-scripts-v2/`)
-- **Modular design**: `main.lua`, `config.lua`, `matcher.lua`, `router.lua`, `tracker.lua`
-- **AI result detection**: Checks `Manufacturer=STANFORDAIDE`, `SeriesDescription` patterns
-- **Prevents loops**: Won't re-send studies that already have AI output
-- **Fresh reprocess**: `clearAIOutput()` + `resetTracking()` + re-route
+### Single Source of Truth: `config.env`
 
-### 2. Workflow Tracking (`monitoring/api/`)
-- Flask API receives events from Lua scripts
-- Stores in PostgreSQL: study arrivals, Mercure sends, AI results, final routes
-- Provides funnel visualization data
+```bash
+make init      # Create config.env from template
+nano config.env  # Set passwords, paths, ports
+make setup     # Generate component-specific configs
+```
 
-### 3. Monitoring Stack (`monitoring/`)
-- **Workflow UI** (port 9080): Vue.js dashboard for study tracking + actions
-- **Grafana** (port 9000): Infrastructure metrics, disk, containers
-- **Prometheus** (port 9090): Metrics collection
-- **Graphite** (port 2003): Mercure native metrics
+All credentials configured in one place, propagated to:
+- `orthanc/.env`
+- `monitoring/.env`
+- Mercure installer
 
-## Port Assignments (9000 Series)
+### Security
+- All generated `.env` files have `chmod 600`
+- `config.env` is gitignored
+- No secrets in git history
 
-| Component | Service | Port |
-|-----------|---------|------|
-| **Orthanc (9010s)** | Operator UI | 9010 |
-| | Orthanc Web | 9011 |
-| | OHIF Viewer | 9012 |
-| | PostgreSQL | 9013 |
-| | Routing API | 9014 |
-| | DICOM | 4242 |
-| **Mercure (9020s)** | Web UI | 9020 |
-| | Bookkeeper | 9021 |
-| | PostgreSQL | 9022 |
-| **Monitoring (9030s)** | Workflow UI | 9030 |
-| | Workflow API | 9031 |
-| | **Grafana (unified)** | **9032** |
-| | Prometheus | 9033 |
-| | Alertmanager | 9034 |
-| | Graphite | 9038 |
+## Credentials (defaults in config.env.template)
 
-> All Grafana dashboards consolidated in monitoring stack (port 9032)
-
-## Credentials
-
-### Orthanc
-- Web UI: `orthanc_admin` / `helloaide123`
-- PostgreSQL: `orthanc` / `orthanc123`
-
-### Mercure DB
-- Host: `mercure_db_1`
-- User: `mercure`
-- Pass: `GOLtgqwpBUF9n23gQpORcPVJsO4r4lRj`
-
-### Monitoring
-- Grafana: `admin` / `admin123`
-- Workflow DB: `workflow` / `workflow123`
-
-## Recent Fixes Applied
-
-### 1. PyTorch UID Issue (mercure-pediatric-leglength)
-- **Problem**: `KeyError: 'getpwuid(): uid not found: 1001'`
-- **Fix**: Added `TORCHINDUCTOR_CACHE_DIR=/tmp/torch_inductor_cache` and `HOME=/app/v0` to Dockerfile
-- **Also**: Added `fix_passwd_entry()` in `docker_entrypoint.sh`
-
-### 2. AI Result Detection (orthanc/lua-scripts-v2/)
-- **Problem**: Studies with AI results were being re-sent to Mercure
-- **Fix**: Updated `config.lua` patterns: `STANFORDAIDE`, `QA VISUALIZATION`, `AI MEASUREMENTS`, `SR`
-- **Also**: Added safety check in `matcher.lua` - if AI output exists, return `UNMATCHED`
-
-### 3. Workflow API JSON Parsing
-- **Problem**: Lua was sending malformed JSON
-- **Fix**: Changed `JsonEncode` to `DumpJson`, fixed HTTP headers
+| Service | Username | Password Variable |
+|---------|----------|-------------------|
+| Orthanc Web | orthanc_admin | ORTHANC_ADMIN_PASS |
+| Orthanc PostgreSQL | orthanc | ORTHANC_DB_PASS |
+| Mercure PostgreSQL | mercure | MERCURE_DB_PASS |
+| Grafana | admin | GRAFANA_PASS |
+| Workflow DB | workflow | WORKFLOW_DB_PASS |
 
 ## Commands
 
 ```bash
-# From leglength-deployment/
-
-# Status
-make status
+# Setup (one time)
+make init
+make setup
 
 # Start/Stop
 make start-all
 make stop-all
 
 # Individual components
-make orthanc-start
-make mercure-start  
-make monitoring-start
-make ai-build
+make monitoring-start    make monitoring-stop
+make orthanc-start       make orthanc-stop
+make mercure-start       make mercure-stop
 
-# Logs
-make orthanc-logs
-make monitoring-logs
+# Status
+make status
 ```
 
-## Next Steps / TODOs
-
-1. **Configure Orthanc → Monitoring connection**
-   - Update Lua scripts to POST events to `http://<monitoring>:9044/track/*`
-
-2. **Configure Mercure → Graphite**
-   - Edit `mercure/mercure.json` to set `graphite_ip` and `graphite_port`
-
-3. **Create Grafana dashboards**
-   - Disk usage for Orthanc storage
-   - Mercure queue depths
-   - AI processing times
-
-4. **Test end-to-end flow**
-   - Upload study → Orthanc → Mercure → AI → Results back → Final route
-
-5. **Add alerting**
-   - Disk space warnings
-   - Failed jobs in Mercure
-   - Studies stuck > 1 hour
-
-## Files to Know
+## Key Files
 
 | File | Purpose |
 |------|---------|
+| `config.env` | Master configuration (not in git) |
+| `scripts/setup-config.sh` | Generates component .env files |
 | `orthanc/lua-scripts-v2/config.lua` | Routing rules, AI detection patterns |
-| `orthanc/lua-scripts-v2/matcher.lua` | Study classification logic |
-| `orthanc/lua-scripts-v2/router.lua` | Routing actions, clearAIOutput |
-| `monitoring/api/app.py` | Workflow tracking API |
-| `monitoring/ui/index.html` | RADWATCH dashboard |
+| `monitoring/config/grafana/provisioning/` | Datasources, dashboards |
 | `mercure-pediatric-leglength/Dockerfile` | AI module container |
-| `mercure-pediatric-leglength/leglength/detector.py` | PyTorch model inference |
+
+## SSH Tunnel (Remote Access)
+
+```bash
+ssh -L 9010:192.168.56.105:9010 \
+    -L 9011:192.168.56.105:9011 \
+    -L 9012:192.168.56.105:9012 \
+    -L 9020:192.168.56.105:9020 \
+    -L 9030:192.168.56.105:9030 \
+    -L 9032:192.168.56.105:9032 \
+    -L 4242:192.168.56.105:4242 \
+    -N user@jumphost
+```
 
 ---
 
