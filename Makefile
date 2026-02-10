@@ -372,3 +372,9 @@ clean-all:
 	@printf "  make setup\n"
 	@printf "  make start-all\n"
 	@printf "  make ai-build\n"
+
+.PHONY: workflow-sync
+workflow-sync:
+	@printf "$(BOLD)$(CYAN)Syncing workflows from Mercure Bookkeeper...$(RESET)\n"
+	@curl -X POST http://localhost:9031/workflows/sync | jq .
+	@printf "\n"

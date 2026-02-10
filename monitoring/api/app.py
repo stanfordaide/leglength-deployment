@@ -1313,6 +1313,148 @@ def ensure_poller_running():
         start_job_poller()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# RECOVERY: Sync from Mercure Bookkeeper
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/workflows/sync', methods=['POST'])
+def sync_workflows_from_mercure():
+    """Recover workflow tracking from Mercure Bookkeeper.
+    
+    Useful after database reset or corruption. Queries Mercure's historical
+    processing records and recreates workflow tracking entries.
+    
+    Returns: {synced: N, studies: [...]}
+    """
+    try:
+        bookkeeper_conn = get_bookkeeper_db()
+        if bookkeeper_conn is None:
+            return jsonify({'error': 'Mercure Bookkeeper not configured'}), 503
+        
+        bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
+        workflow_conn = get_db()
+        workflow_cur = workflow_conn.cursor()
+        
+        # Query Mercure for all processed series and their study associations
+        bookkeeper_cur.execute("""
+            SELECT DISTINCT 
+                ds.study_uid,
+                ds.series_uid,
+                ds.study_date,
+                ds.patient_name,
+                ds.study_description,
+                MIN(se.time) as first_event_time,
+                MAX(se.time) as last_event_time
+            FROM dicom_series ds
+            LEFT JOIN series_events se ON ds.series_uid = se.series_uid
+            GROUP BY ds.study_uid, ds.series_uid, ds.study_date, 
+                     ds.patient_name, ds.study_description
+            ORDER BY ds.study_uid
+        """)
+        
+        mercure_series = bookkeeper_cur.fetchall()
+        
+        synced_studies = []
+        synced_count = 0
+        
+        # For each study in Mercure, check if it exists in Orthanc and create workflow record
+        orthanc_api_url = os.environ.get('ORTHANC_API_URL', 'http://172.17.0.1:9011')
+        orthanc_auth = (
+            os.environ.get('ORTHANC_USERNAME', ''),
+            os.environ.get('ORTHANC_PASSWORD', '')
+        )
+        
+        for series_record in mercure_series:
+            study_uid = series_record['study_uid']
+            
+            # Find study ID in Orthanc by UID
+            try:
+                resp = requests.get(
+                    f"{orthanc_api_url}/tools/find",
+                    json={'Level': 'Study', 'StudyInstanceUID': study_uid},
+                    auth=orthanc_auth,
+                    timeout=5
+                )
+                if resp.status_code != 200 or not resp.json():
+                    continue  # Study not in Orthanc, skip
+                
+                orthanc_study = resp.json()[0] if resp.json() else None
+                if not orthanc_study:
+                    continue
+                
+                study_id = orthanc_study.get('ID')
+                
+                # Get study details from Orthanc
+                resp = requests.get(
+                    f"{orthanc_api_url}/studies/{study_id}",
+                    auth=orthanc_auth,
+                    timeout=5
+                )
+                if resp.status_code != 200:
+                    continue
+                
+                orthanc_study_data = resp.json()
+                patient_name = orthanc_study_data.get('PatientMainDicomTags', {}).get('PatientName', series_record['patient_name'])
+                
+            except requests.RequestException:
+                continue  # Can't reach Orthanc, skip this study
+            
+            # Check if workflow already exists
+            workflow_cur.execute(
+                "SELECT study_id FROM study_workflows WHERE study_id = %s",
+                (study_id,)
+            )
+            if workflow_cur.fetchone():
+                continue  # Already tracked, skip
+            
+            # Create workflow record from Mercure data
+            now = datetime.utcnow()
+            workflow_cur.execute("""
+                INSERT INTO study_workflows (
+                    study_id, study_uid, patient_name, study_description,
+                    mercure_sent_at, mercure_send_success,
+                    ai_results_received, ai_results_received_at,
+                    created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (study_id) DO NOTHING
+            """, (
+                study_id,
+                study_uid,
+                patient_name,
+                series_record['study_description'],
+                series_record['first_event_time'],  # When sent to Mercure
+                True,  # Assume success if it's in Mercure
+                True,  # Assume AI ran if there are series events
+                series_record['last_event_time'],   # Last event time as "AI results"
+                now,
+                now
+            ))
+            
+            synced_studies.append({
+                'study_id': study_id,
+                'study_uid': study_uid,
+                'patient_name': patient_name,
+                'synced_at': now.isoformat()
+            })
+            synced_count += 1
+        
+        workflow_conn.commit()
+        workflow_cur.close()
+        workflow_conn.close()
+        bookkeeper_cur.close()
+        bookkeeper_conn.close()
+        
+        return jsonify({
+            'synced': synced_count,
+            'studies': synced_studies,
+            'message': f'Recovered {synced_count} studies from Mercure Bookkeeper'
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error syncing workflows from Mercure: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     start_job_poller()
     app.run(host='0.0.0.0', port=5000)
