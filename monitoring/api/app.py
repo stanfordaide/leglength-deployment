@@ -1354,9 +1354,7 @@ def sync_workflows_from_mercure():
         """)
         
         mercure_series = bookkeeper_cur.fetchall()
-        
-        synced_studies = []
-        synced_count = 0
+        app.logger.info(f"[SYNC] Found {len(mercure_series)} studies in Mercure")
         
         # For each study in Mercure, check if it exists in Orthanc and create workflow record
         orthanc_api_url = os.environ.get('ORTHANC_API_URL', 'http://172.17.0.1:9011')
@@ -1375,6 +1373,7 @@ def sync_workflows_from_mercure():
             )
             if resp.status_code == 200:
                 study_ids = resp.json()  # Array of study IDs (strings)
+                app.logger.info(f"[SYNC] Found {len(study_ids)} studies in Orthanc")
                 for study_id in study_ids:
                     try:
                         study_resp = requests.get(
@@ -1390,17 +1389,24 @@ def sync_workflows_from_mercure():
                                     'study_id': study_id,
                                     'data': study_data
                                 }
-                    except requests.RequestException:
-                        pass  # Skip this study
-        except requests.RequestException:
-            pass  # Can't reach Orthanc, skip entire sync
+                                app.logger.info(f"[SYNC] Orthanc study: {study_uid} -> {study_id}")
+                    except requests.RequestException as e:
+                        app.logger.error(f"[SYNC] Error fetching Orthanc study {study_id}: {e}")
+        except requests.RequestException as e:
+            app.logger.error(f"[SYNC] Can't reach Orthanc: {e}")
+            return jsonify({'error': f'Cannot reach Orthanc: {str(e)}'}), 503
         
         # Now match Mercure series with Orthanc studies
+        synced_studies = []
+        synced_count = 0
+        
         for series_record in mercure_series:
             study_uid = series_record['study_uid']
+            app.logger.info(f"[SYNC] Checking Mercure study: {study_uid}")
             
             # Check if this study exists in Orthanc
             if study_uid not in orthanc_studies:
+                app.logger.info(f"[SYNC] Study {study_uid} not in Orthanc, skipping")
                 continue  # Study not in Orthanc, skip
             
             orthanc_study_info = orthanc_studies[study_uid]
@@ -1414,10 +1420,12 @@ def sync_workflows_from_mercure():
                 (study_id,)
             )
             if workflow_cur.fetchone():
+                app.logger.info(f"[SYNC] Study {study_id} already tracked, skipping")
                 continue  # Already tracked, skip
             
             # Create workflow record from Mercure data
             now = datetime.utcnow()
+            app.logger.info(f"[SYNC] Creating workflow for {study_id} (UID: {study_uid})")
             workflow_cur.execute("""
                 INSERT INTO study_workflows (
                     study_id, study_uid, patient_name, study_description,
@@ -1453,6 +1461,7 @@ def sync_workflows_from_mercure():
         bookkeeper_cur.close()
         bookkeeper_conn.close()
         
+        app.logger.info(f"[SYNC] Completed: synced {synced_count} studies")
         return jsonify({
             'synced': synced_count,
             'studies': synced_studies,
