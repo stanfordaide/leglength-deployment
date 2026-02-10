@@ -6,9 +6,9 @@
 #   Build artifacts (ai): build, test, push, clean, info
 
 .PHONY: help status urls start-all stop-all restart-all \
-        orthanc-start orthanc-stop orthanc-restart orthanc-status orthanc-logs orthanc-shell orthanc-validate \
-        mercure-start mercure-stop mercure-restart mercure-status mercure-logs mercure-shell \
-        monitoring-start monitoring-stop monitoring-restart monitoring-status monitoring-logs \
+        orthanc-start orthanc-stop orthanc-restart orthanc-status orthanc-logs orthanc-debug orthanc-shell orthanc-validate \
+        mercure-start mercure-stop mercure-restart mercure-status mercure-logs mercure-debug mercure-shell \
+        monitoring-start monitoring-stop monitoring-restart monitoring-status monitoring-logs monitoring-debug \
         ai-build ai-test ai-push ai-clean ai-info \
         init setup setup-config clean clean-all ps
 
@@ -42,7 +42,8 @@ help:
 	@printf "    make orthanc-stop    Stop Orthanc\n"
 	@printf "    make orthanc-restart Restart Orthanc\n"
 	@printf "    make orthanc-status  Check Orthanc health\n"
-	@printf "    make orthanc-logs    View Orthanc logs\n"
+	@printf "    make orthanc-logs    View Orthanc logs (follow)\n"
+	@printf "    make orthanc-debug   Show recent logs (troubleshooting)\n"
 	@printf "    make orthanc-shell   Shell into Orthanc container\n"
 	@printf "    make orthanc-validate Check Orthanc config\n"
 	@printf "\n"
@@ -51,7 +52,8 @@ help:
 	@printf "    make mercure-stop    Stop Mercure\n"
 	@printf "    make mercure-restart Restart Mercure\n"
 	@printf "    make mercure-status  Check Mercure health\n"
-	@printf "    make mercure-logs    View Mercure logs\n"
+	@printf "    make mercure-logs    View Mercure logs (follow)\n"
+	@printf "    make mercure-debug   Show recent logs (troubleshooting)\n"
 	@printf "    make mercure-shell   Shell into Mercure container\n"
 	@printf "\n"
 	@printf "  $(GREEN)Monitoring$(RESET) - Grafana, Prometheus, Workflow UI\n"
@@ -59,7 +61,8 @@ help:
 	@printf "    make monitoring-stop    Stop monitoring stack\n"
 	@printf "    make monitoring-restart Restart monitoring stack\n"
 	@printf "    make monitoring-status  Check monitoring health\n"
-	@printf "    make monitoring-logs    View monitoring logs\n"
+	@printf "    make monitoring-logs    View monitoring logs (follow)\n"
+	@printf "    make monitoring-debug   Show recent logs (troubleshooting)\n"
 	@printf "\n"
 	@printf "$(BOLD)AI Module (build/test/push/clean/info):$(RESET)\n"
 	@printf "    make ai-build        Build Docker image\n"
@@ -87,16 +90,16 @@ status:
 	@printf "$(BOLD)$(CYAN)═══════════════════════════════════════════════════════════════$(RESET)\n"
 	@printf "\n"
 	@printf "$(BOLD)$(GREEN)▸ Orthanc$(RESET)\n"
-	@cd orthanc && docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
+	@cd orthanc && sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
 	@printf "\n"
 	@printf "$(BOLD)$(GREEN)▸ Mercure$(RESET)\n"
-	@cd /opt/mercure && docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
+	@cd /opt/mercure && sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
 	@printf "\n"
 	@printf "$(BOLD)$(GREEN)▸ Monitoring$(RESET)\n"
-	@cd monitoring && docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
+	@cd monitoring && sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
 	@printf "\n"
 	@printf "$(BOLD)$(GREEN)▸ AI Module$(RESET)\n"
-	@docker images stanfordaide/pediatric-leglength --format "  {{.Repository}}:{{.Tag}}  ({{.Size}}, created {{.CreatedSince}})" 2>/dev/null || printf "  Image not built\n"
+	@sudo docker images stanfordaide/pediatric-leglength --format "  {{.Repository}}:{{.Tag}}  ({{.Size}}, created {{.CreatedSince}})" 2>/dev/null || printf "  Image not built\n"
 	@printf "\n"
 
 start-all: monitoring-start orthanc-start mercure-start
@@ -117,7 +120,7 @@ stop-all: mercure-stop orthanc-stop monitoring-stop
 restart-all: stop-all start-all
 
 ps:
-	@docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus" --filter "name=monitoring" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+	@sudo docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus" --filter "name=monitoring" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 urls:
 	@printf "$(BOLD)$(CYAN)Service URLs$(RESET)\n"
@@ -153,17 +156,26 @@ orthanc-stop:
 orthanc-restart: orthanc-stop orthanc-start
 
 orthanc-status:
-	@printf "$(CYAN)Orthanc Status:$(RESET)\n"
-	@cd orthanc && docker compose ps
+	@printf "$(CYAN)Orthanc Container Status:$(RESET)\n"
+	@cd orthanc && sudo docker compose ps
 	@printf "\n"
 	@printf "$(CYAN)Health Check:$(RESET)\n"
-	@curl -sf http://localhost:9011/system 2>/dev/null | jq -r '"  Version: \(.Version)\n  DICOM AET: \(.DicomAet)\n  Storage: \(.StorageSize) bytes"' || printf "  $(RED)Not responding$(RESET)\n"
+	@curl -sf http://localhost:9011/system 2>/dev/null | jq -r '"  Version: \(.Version)\n  DICOM AET: \(.DicomAet)\n  Storage: \(.StorageSize) bytes"' || printf "  $(RED)Not responding - run 'make orthanc-debug' for logs$(RESET)\n"
 
 orthanc-logs:
-	@cd orthanc && docker compose logs -f --tail=100
+	@cd orthanc && sudo docker compose logs -f --tail=100
+
+orthanc-debug:
+	@printf "$(CYAN)Orthanc Debug Info:$(RESET)\n"
+	@printf "\n$(BOLD)Container Status:$(RESET)\n"
+	@cd orthanc && sudo docker compose ps -a
+	@printf "\n$(BOLD)Recent Logs (orthanc-server):$(RESET)\n"
+	@cd orthanc && sudo docker compose logs orthanc-server --tail=30 2>/dev/null || printf "  No logs available\n"
+	@printf "\n$(BOLD)Recent Logs (orthanc-postgres):$(RESET)\n"
+	@cd orthanc && sudo docker compose logs orthanc-postgres --tail=10 2>/dev/null || printf "  No logs available\n"
 
 orthanc-shell:
-	@cd orthanc && docker compose exec orthanc bash
+	@cd orthanc && sudo docker compose exec orthanc-server bash
 
 orthanc-validate:
 	@printf "$(CYAN)Validating Orthanc configuration...$(RESET)\n"
@@ -188,16 +200,23 @@ mercure-restart: mercure-stop mercure-start
 
 mercure-status:
 	@printf "$(CYAN)Mercure Status:$(RESET)\n"
-	@cd /opt/mercure && docker compose ps 2>/dev/null || printf "  Not running\n"
+	@cd /opt/mercure && sudo docker compose ps 2>/dev/null || printf "  Not running\n"
 	@printf "\n"
 	@printf "$(CYAN)Health Check:$(RESET)\n"
-	@curl -sf http://localhost:9020/api/status 2>/dev/null && printf "  $(GREEN)Responding$(RESET)\n" || printf "  $(RED)Not responding$(RESET)\n"
+	@curl -sf http://localhost:9020/api/status 2>/dev/null && printf "  $(GREEN)Responding$(RESET)\n" || printf "  $(RED)Not responding - run 'make mercure-debug' for logs$(RESET)\n"
 
 mercure-logs:
-	@cd /opt/mercure && docker compose logs -f --tail=100
+	@cd /opt/mercure && sudo docker compose logs -f --tail=100
+
+mercure-debug:
+	@printf "$(CYAN)Mercure Debug Info:$(RESET)\n"
+	@printf "\n$(BOLD)Container Status:$(RESET)\n"
+	@cd /opt/mercure && sudo docker compose ps -a 2>/dev/null || printf "  Mercure not installed\n"
+	@printf "\n$(BOLD)Recent Logs:$(RESET)\n"
+	@cd /opt/mercure && sudo docker compose logs --tail=30 2>/dev/null || printf "  No logs available\n"
 
 mercure-shell:
-	@cd /opt/mercure && docker compose exec mercure_ui bash
+	@cd /opt/mercure && sudo docker compose exec mercure_ui bash
 
 # =============================================================================
 # MONITORING - Grafana, Prometheus, Workflow UI
@@ -205,19 +224,19 @@ mercure-shell:
 
 monitoring-start:
 	@printf "$(CYAN)Starting Monitoring stack...$(RESET)\n"
-	@cd monitoring && docker compose up -d
+	@cd monitoring && sudo docker compose up -d
 	@printf "$(GREEN)✅ Monitoring started$(RESET)\n"
 
 monitoring-stop:
 	@printf "$(YELLOW)Stopping Monitoring stack...$(RESET)\n"
-	@cd monitoring && docker compose down
+	@cd monitoring && sudo docker compose down
 	@printf "$(YELLOW)Monitoring stopped$(RESET)\n"
 
 monitoring-restart: monitoring-stop monitoring-start
 
 monitoring-status:
 	@printf "$(CYAN)Monitoring Status:$(RESET)\n"
-	@cd monitoring && docker compose ps
+	@cd monitoring && sudo docker compose ps
 	@printf "\n"
 	@printf "$(CYAN)Service Health:$(RESET)\n"
 	@curl -sf http://localhost:9032/api/health 2>/dev/null && printf "  Grafana:    $(GREEN)OK$(RESET)\n" || printf "  Grafana:    $(RED)DOWN$(RESET)\n"
@@ -225,7 +244,14 @@ monitoring-status:
 	@curl -sf http://localhost:9031/health 2>/dev/null && printf "  Workflow API: $(GREEN)OK$(RESET)\n" || printf "  Workflow API: $(RED)DOWN$(RESET)\n"
 
 monitoring-logs:
-	@cd monitoring && docker compose logs -f --tail=100
+	@cd monitoring && sudo docker compose logs -f --tail=100
+
+monitoring-debug:
+	@printf "$(CYAN)Monitoring Debug Info:$(RESET)\n"
+	@printf "\n$(BOLD)Container Status:$(RESET)\n"
+	@cd monitoring && sudo docker compose ps -a
+	@printf "\n$(BOLD)Recent Logs:$(RESET)\n"
+	@cd monitoring && sudo docker compose logs --tail=30 2>/dev/null || printf "  No logs available\n"
 
 # =============================================================================
 # AI MODULE - Docker Image (Build Artifact)
