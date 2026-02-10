@@ -153,7 +153,10 @@ orthanc-stop:
 	@cd orthanc && sudo docker compose down
 	@printf "$(YELLOW)Orthanc stopped$(RESET)\n"
 
-orthanc-restart: orthanc-stop orthanc-start
+orthanc-restart: orthanc-stop orthanc-start orthanc-seed-modalities
+
+orthanc-seed-modalities:
+	@cd orthanc && sudo make seed-modalities
 
 orthanc-status:
 	@printf "$(CYAN)Orthanc Container Status:$(RESET)\n"

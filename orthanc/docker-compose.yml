@@ -27,8 +27,7 @@ services:
   orthanc:
     image: jodogne/orthanc-python
     container_name: orthanc-server
-    entrypoint: /bin/bash
-    command: -c "(/entrypoint.sh &) && /run/secrets/"
+    command: /run/secrets/
     secrets:
       - orthanc.json
     ports:
@@ -39,8 +38,6 @@ services:
       - ./lua-scripts-v2:/etc/orthanc/lua-v2:ro
       # Keep old scripts available for rollback
       - ./lua-scripts:/etc/orthanc/lua:ro
-      # Mount startup script to seed modalities
-      - ./entrypoint.sh:/entrypoint.sh:ro
       - orthanc-storage:/var/lib/orthanc/db
     environment:
       - ORTHANC_NAME=${ORTHANC_AET:-ORTHANC_LPCH}
