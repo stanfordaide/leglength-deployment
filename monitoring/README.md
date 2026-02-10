@@ -19,29 +19,48 @@ Workflow tracking, dashboards, and analytics for the pediatric leg length AI pip
 ## Architecture
 
 ```
-┌──────────────────┐
-│  Workflow UI     │ (9030)
-│  ├─ Recent Studies
-│  ├─ Pipeline Status
-│  ├─ DICOM Routes
-│  └─ Metrics
-└──────────┬───────┘
-           │
-           ▼
-┌──────────────────────────────────────────────┐
-│ Workflow API (9031)                          │
-│ ├─ Study tracking                            │
-│ ├─ Mercure Bookkeeper integration            │
-│ ├─ Orthanc API calls                         │
-│ └─ Postgres (workflow_db)                    │
-└──────────┬──────────────────────────────────┘
-           │
-    ┌──────┴──────┐
-    │             │
-    ▼             ▼
-Orthanc       Mercure
-(9011)        (9020)
+┌─────────────────────────────────────────────────────────────────┐
+│  Workflow UI (9030)                                             │
+│  ├─ Recent Studies                                              │
+│  ├─ Pipeline Status: MERCURE → AI → DESTINATIONS                │
+│  ├─ DICOM Destinations & Routes                                 │
+│  └─ Metrics & Health                                            │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Workflow API (9031) - Flask Backend                             │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Job Poller (Background Thread)                          │   │
+│  │ ├─ Every 10s: queries pending_jobs table                │   │
+│  │ ├─ Calls Orthanc /jobs/{jobId} REST endpoint            │   │
+│  │ ├─ Updates workflow_status with REAL result             │   │
+│  │ └─ Removes completed jobs from pending_jobs             │   │
+│  └─┬───────────────────────────────────────────────────────┘   │
+│    │                                                             │
+│  ┌─┴────────────────────────────────────────────────────────┐   │
+│  │ Core Components                                          │   │
+│  ├─ Study tracking (workflow_db)                            │   │
+│  ├─ Mercure Bookkeeper integration (read-only analytics)    │   │
+│  ├─ Orthanc API calls for status                            │   │
+│  └─ Event endpoints: /track/{start,destination,ai-results}  │   │
+│                                                                 │
+└──────┬────────────────────┬────────────────────┬────────────────┘
+       │                    │                    │
+       ▼                    ▼                    ▼
+    Orthanc             Mercure            PostgreSQL
+    (9011)              (9020)              (workflow_db)
+    └─ /jobs/{id}                          └─ pending_jobs
+                                           └─ study_workflows
 ```
+
+**Key Feature: Async Job Completion Tracking**
+- When Orthanc sends to a destination, it returns a job ID
+- Workflow API registers the job ID in `pending_jobs` table
+- Background poller periodically checks if the job completed (success/failure)
+- Only marks destination as "complete" when Orthanc confirms actual delivery
+- See [CHANGES.md](../CHANGES.md#how-job-tracking-works-for-destination-sends) for details
 
 ## Quick Start
 
