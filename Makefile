@@ -196,6 +196,52 @@ clean:
 	@cd monitoring && docker compose down -v 2>/dev/null || true
 	@echo "$(YELLOW)Cleaned.$(RESET)"
 
+# Complete wipe - removes ALL data, configs, images, volumes
+clean-all:
+	@echo "$(RED)╔══════════════════════════════════════════════════════════════╗$(RESET)"
+	@echo "$(RED)║  WARNING: This will PERMANENTLY DELETE everything:           ║$(RESET)"
+	@echo "$(RED)║  - All containers, images, and volumes                       ║$(RESET)"
+	@echo "$(RED)║  - Mercure installation (/opt/mercure)                       ║$(RESET)"
+	@echo "$(RED)║  - Orthanc data and PostgreSQL                               ║$(RESET)"
+	@echo "$(RED)║  - All generated config files                                ║$(RESET)"
+	@echo "$(RED)╚══════════════════════════════════════════════════════════════╝$(RESET)"
+	@read -p "Type 'DELETE' to confirm: " confirm && [ "$$confirm" = "DELETE" ] || exit 1
+	@echo ""
+	@echo "$(YELLOW)Stopping services...$(RESET)"
+	@cd orthanc && sudo docker compose down -v 2>/dev/null || true
+	@cd /opt/mercure && sudo docker compose down -v 2>/dev/null || true
+	@cd monitoring && sudo docker compose down -v 2>/dev/null || true
+	@echo "$(YELLOW)Removing Mercure...$(RESET)"
+	@sudo rm -rf /opt/mercure
+	@echo "$(YELLOW)Removing Orthanc data...$(RESET)"
+	@sudo rm -rf /opt/orthanc
+	@sudo rm -rf /home/orthanc/orthanc-storage
+	@sudo rm -rf /home/orthanc/postgres-data
+	@echo "$(YELLOW)Removing generated configs...$(RESET)"
+	@rm -f orthanc/.env orthanc/config/orthanc.json
+	@rm -f monitoring/.env
+	@rm -rf mercure/config-generated/
+	@rm -f config.env
+	@echo "$(YELLOW)Docker cleanup...$(RESET)"
+	@sudo docker stop $$(sudo docker ps -aq) 2>/dev/null || true
+	@sudo docker rm $$(sudo docker ps -aq) 2>/dev/null || true
+	@sudo docker volume rm $$(sudo docker volume ls -q) 2>/dev/null || true
+	@sudo docker image prune -af
+	@sudo docker builder prune -af
+	@sudo docker network prune -f
+	@echo ""
+	@echo "$(GREEN)✅ Complete cleanup done!$(RESET)"
+	@echo ""
+	@echo "To start fresh:"
+	@echo "  git pull"
+	@echo "  make init"
+	@echo "  nano config.env"
+	@echo "  make setup"
+	@echo "  make monitoring-start"
+	@echo "  cd orthanc && sudo make setup && sudo make start && sudo make seed-modalities && cd .."
+	@echo "  make mercure-install"
+	@echo "  make ai-build"
+
 # Show all docker containers related to this deployment
 ps:
 	@docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus"
