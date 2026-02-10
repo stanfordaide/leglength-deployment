@@ -39,8 +39,7 @@ services:
       # Orthanc REST API (for status queries, not direct DB)
       # Use 172.17.0.1 (Docker gateway on Linux) to reach Orthanc on host
       - ORTHANC_API_URL=http://172.17.0.1:${ORTHANC_WEB_PORT:-9011}
-      - ORTHANC_USERNAME=${ORTHANC_ADMIN_USER:-orthanc}
-      - ORTHANC_PASSWORD=${ORTHANC_ADMIN_PASSWORD:-orthanc}
+      # ORTHANC_USERNAME and ORTHANC_PASSWORD loaded from env_file
       # Mercure Bookkeeper DB (READ-ONLY for analytics enrichment)
       # Bookkeeper stores processing history for all studies
       - BOOKKEEPER_DB_HOST=${BOOKKEEPER_DB_HOST:-}
