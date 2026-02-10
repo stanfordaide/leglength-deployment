@@ -477,7 +477,11 @@ def track_job():
 
 @app.route('/workflows', methods=['GET'])
 def get_workflows():
-    """Get recent workflows with their pipeline status"""
+    """Get recent workflows with their pipeline status.
+    
+    Filters out studies that no longer exist in Orthanc (checks at query time).
+    This ensures UI only shows studies that are still in the system.
+    """
     limit = request.args.get('limit', 50, type=int)
     hours = request.args.get('hours', 24, type=int)
     
@@ -516,9 +520,22 @@ def get_workflows():
     cur.close()
     conn.close()
     
-    # Convert to pipeline format
+    # Convert to pipeline format and filter out deleted studies
     result = []
     for w in workflows:
+        # Check if study still exists in Orthanc
+        try:
+            resp = requests.get(
+                f"http://orthanc-server:8042/studies/{w['study_id']}",
+                timeout=2
+            )
+            if resp.status_code == 404:
+                # Study deleted from Orthanc, skip it
+                continue
+        except requests.RequestException:
+            # Orthanc not reachable, include the workflow anyway
+            pass
+        
         # Determine current stage and status
         pipeline = {
             'study_id': w['study_id'],
@@ -591,58 +608,95 @@ def get_workflow(study_id):
 
 @app.route('/funnel', methods=['GET'])
 def get_funnel():
-    """Get funnel/Sankey data showing flow through pipeline stages"""
+    """Get funnel/Sankey data showing flow through pipeline stages.
+    
+    Filters out studies that have been deleted from Orthanc.
+    """
     hours = request.args.get('hours', 24, type=int)
     
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
+    # First, get all studies in the time window
     cur.execute("""
-        SELECT 
-            -- Total studies that entered the pipeline
-            COUNT(*) as total_studies,
-            
-            -- Stage 1: Sent to MERCURE
-            COUNT(*) FILTER (WHERE mercure_sent_at IS NOT NULL) as mercure_attempted,
-            COUNT(*) FILTER (WHERE mercure_send_success = TRUE) as mercure_sent_ok,
-            COUNT(*) FILTER (WHERE mercure_send_success = FALSE) as mercure_sent_failed,
-            
-            -- Stage 2: AI Results received
-            COUNT(*) FILTER (WHERE ai_results_received = TRUE) as ai_results_received,
-            COUNT(*) FILTER (WHERE mercure_send_success = TRUE AND ai_results_received = FALSE) as ai_results_waiting,
-            
-            -- Stage 3a: LPCH Router
-            COUNT(*) FILTER (WHERE lpch_sent_at IS NOT NULL) as lpch_attempted,
-            COUNT(*) FILTER (WHERE lpch_send_success = TRUE) as lpch_sent_ok,
-            COUNT(*) FILTER (WHERE lpch_send_success = FALSE) as lpch_sent_failed,
-            
-            -- Stage 3b: LPCH T Router
-            COUNT(*) FILTER (WHERE lpcht_sent_at IS NOT NULL) as lpcht_attempted,
-            COUNT(*) FILTER (WHERE lpcht_send_success = TRUE) as lpcht_sent_ok,
-            COUNT(*) FILTER (WHERE lpcht_send_success = FALSE) as lpcht_sent_failed,
-            
-            -- Stage 3c: MODLINK
-            COUNT(*) FILTER (WHERE modlink_sent_at IS NOT NULL) as modlink_attempted,
-            COUNT(*) FILTER (WHERE modlink_send_success = TRUE) as modlink_sent_ok,
-            COUNT(*) FILTER (WHERE modlink_send_success = FALSE) as modlink_sent_failed,
-            
-            -- Fully complete (AI results + all destinations)
-            COUNT(*) FILTER (WHERE 
-                ai_results_received = TRUE AND
-                lpch_send_success = TRUE AND
-                lpcht_send_success = TRUE AND
-                modlink_send_success = TRUE
-            ) as fully_complete
-            
-        FROM study_workflows
+        SELECT study_id FROM study_workflows
         WHERE created_at > NOW() - INTERVAL '%s hours'
     """, (hours,))
+    
+    all_studies = [row['study_id'] for row in cur.fetchall()]
+    
+    # Filter: only studies that still exist in Orthanc
+    existing_study_ids = []
+    for study_id in all_studies:
+        try:
+            resp = requests.get(
+                f"http://orthanc-server:8042/studies/{study_id}",
+                timeout=2
+            )
+            if resp.status_code == 200:
+                existing_study_ids.append(study_id)
+        except requests.RequestException:
+            # Orthanc not reachable, include the study anyway
+            existing_study_ids.append(study_id)
+    
+    # Now query stats only for existing studies
+    if existing_study_ids:
+        placeholders = ','.join(['%s'] * len(existing_study_ids))
+        cur.execute(f"""
+            SELECT 
+                -- Total studies that entered the pipeline
+                COUNT(*) as total_studies,
+                
+                -- Stage 1: Sent to MERCURE
+                COUNT(*) FILTER (WHERE mercure_sent_at IS NOT NULL) as mercure_attempted,
+                COUNT(*) FILTER (WHERE mercure_send_success = TRUE) as mercure_sent_ok,
+                COUNT(*) FILTER (WHERE mercure_send_success = FALSE) as mercure_sent_failed,
+                
+                -- Stage 2: AI Results received
+                COUNT(*) FILTER (WHERE ai_results_received = TRUE) as ai_results_received,
+                COUNT(*) FILTER (WHERE mercure_send_success = TRUE AND ai_results_received = FALSE) as ai_results_waiting,
+                
+                -- Stage 3a: LPCH Router
+                COUNT(*) FILTER (WHERE lpch_sent_at IS NOT NULL) as lpch_attempted,
+                COUNT(*) FILTER (WHERE lpch_send_success = TRUE) as lpch_sent_ok,
+                COUNT(*) FILTER (WHERE lpch_send_success = FALSE) as lpch_sent_failed,
+                
+                -- Stage 3b: LPCH T Router
+                COUNT(*) FILTER (WHERE lpcht_sent_at IS NOT NULL) as lpcht_attempted,
+                COUNT(*) FILTER (WHERE lpcht_send_success = TRUE) as lpcht_sent_ok,
+                COUNT(*) FILTER (WHERE lpcht_send_success = FALSE) as lpcht_sent_failed,
+                
+                -- Stage 3c: MODLINK
+                COUNT(*) FILTER (WHERE modlink_sent_at IS NOT NULL) as modlink_attempted,
+                COUNT(*) FILTER (WHERE modlink_send_success = TRUE) as modlink_sent_ok,
+                COUNT(*) FILTER (WHERE modlink_send_success = FALSE) as modlink_sent_failed,
+                
+                -- Fully complete (AI results + all destinations)
+                COUNT(*) FILTER (WHERE 
+                    ai_results_received = TRUE AND
+                    lpch_send_success = TRUE AND
+                    lpcht_send_success = TRUE AND
+                    modlink_send_success = TRUE
+                ) as fully_complete
+                
+            FROM study_workflows
+            WHERE study_id IN ({placeholders})
+        """, existing_study_ids)
+    else:
+        # No studies found, return empty stats
+        cur.execute("""
+            SELECT 
+                0 as total_studies, 0 as mercure_attempted, 0 as mercure_sent_ok, 0 as mercure_sent_failed,
+                0 as ai_results_received, 0 as ai_results_waiting, 0 as lpch_attempted, 0 as lpch_sent_ok,
+                0 as lpch_sent_failed, 0 as lpcht_attempted, 0 as lpcht_sent_ok, 0 as lpcht_sent_failed,
+                0 as modlink_attempted, 0 as modlink_sent_ok, 0 as modlink_sent_failed, 0 as fully_complete
+        """)
     
     stats = cur.fetchone()
     cur.close()
     conn.close()
     
-    # Build funnel data structure
+    # Build funnel data structure (rest is the same)
     total = stats['total_studies'] or 0
     ai_received = stats['ai_results_received'] or 0
     
