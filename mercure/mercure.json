@@ -1,0 +1,152 @@
+{
+    "appliance_name": "master",
+    "appliance_color": "#FFF",
+    "port": 11112,
+    "accept_compressed_images": false,
+    "incoming_folder": "/opt/mercure/data/incoming",
+    "studies_folder": "/opt/mercure/data/studies",
+    "outgoing_folder": "/opt/mercure/data/outgoing",
+    "success_folder": "/opt/mercure/data/success",
+    "error_folder": "/opt/mercure/data/error",
+    "discard_folder": "/opt/mercure/data/discard",
+    "processing_folder": "/opt/mercure/data/processing",
+    "jobs_folder": "/opt/mercure/data/jobs",
+    "router_scan_interval": 1,
+    "dispatcher_scan_interval": 1,
+    "cleaner_scan_interval": 60,
+    "retention": 259200,
+    "emergency_clean_percentage": 90,
+    "retry_delay": 900,
+    "retry_max": 5,
+    "series_complete_trigger": 60,
+    "study_complete_trigger": 900,
+    "study_forcecomplete_trigger": 5400,
+    "dicom_receiver": {
+        "additional_tags": {}
+    },
+    "graphite_ip": "172.17.0.1",
+    "graphite_port": 2003,
+    "influxdb_host": "",
+    "influxdb_token": "",
+    "influxdb_org": "",
+    "influxdb_bucket": "",
+    "bookkeeper": "bookkeeper:8080",
+    "offpeak_start": "22:00",
+    "offpeak_end": "06:00",
+    "targets": {
+        "OrthancLPCH": {
+            "target_type": "dicom",
+            "contact": "",
+            "comment": "",
+            "direction": "both",
+            "ip": "172.17.0.1",
+            "port": "4242",
+            "aet_target": "ORTHANC_LPCH",
+            "aet_source": "MERCURE",
+            "pass_sender_aet": false,
+            "pass_receiver_aet": false
+        }
+    },
+    "rules": {
+        "LegLengthRule": {
+            "rule": "\"XR EXTREMITY BILATERAL BONE LENGTH\" in tags.StudyDescription ",
+            "target": [
+                "OrthancLPCH"
+            ],
+            "disabled": false,
+            "fallback": false,
+            "contact": "",
+            "comment": "Default rule: tags.StudyDescription == \"LPCH XR EXTREMITY BILATERAL BONE LENGTH\"",
+            "tags": "",
+            "action": "both",
+            "action_trigger": "series",
+            "study_trigger_condition": "timeout",
+            "study_force_completion_action": "discard",
+            "study_trigger_series": "",
+            "priority": "normal",
+            "processing_module": [
+                "PediatricLegLength"
+            ],
+            "processing_settings": {},
+            "processing_retain_images": false,
+            "notification_email": "",
+            "notification_webhook": "",
+            "notification_payload": "",
+            "notification_payload_body": "Rule \"{{ rule }}\" triggered {{ event }}\r\n{% if details is defined and details|length %}\r\nDetails:\r\n{{ details }}\r\n{% endif %}",
+            "notification_email_body": "Rule \"{{ rule }}\" triggered {{ event }}\r\nName: {{ patient_name }}\r\nACC: {{ acc }}\r\nMRN: {{ mrn }}\r\n{% if details is defined and details|length %}\r\nDetails:\r\n{{ details }}\r\n{% endif %}",
+            "notification_email_type": "plain",
+            "notification_trigger_reception": true,
+            "notification_trigger_completion": true,
+            "notification_trigger_completion_on_request": false,
+            "notification_trigger_error": true
+        }
+    },
+    "modules": {
+        "PediatricLegLength": {
+            "docker_tag": "stanfordaide/pediatric-leglength:latest",
+            "additional_volumes": "",
+            "environment": "",
+            "docker_arguments": "",
+            "settings": {
+                "models": [
+                    "rn50adncti",
+                    "rn50adkpncti",
+                    "rn50adkp"
+                ],
+                "series_offset": 1000,
+                "femur_threshold": 0.2,
+                "tibia_threshold": 0.2,
+                "total_threshold": 1.0,
+                "confidence_threshold": 0.0,
+                "monitoring": {
+                    "enabled": true,
+                    "influxdb": {
+                        "url": "http://host.docker.internal:8086",
+                        "token": "ai-inference-token-12345",
+                        "org": "mercure-ai",
+                        "bucket": "ai-inference-spc",
+                        "timeout": 5.0
+                    },
+                    "prometheus": {
+                        "gateway_url": "http://host.docker.internal:9091",
+                        "job_name": "pediatric-leglength",
+                        "instance": "pediatric-leglength-module",
+                        "timeout": 5.0
+                    },
+                    "metrics": {
+                        "collection_interval": 10,
+                        "batch_size": 50,
+                        "include_system_metrics": true,
+                        "include_model_metrics": true
+                    }
+                }
+            },
+            "contact": "arogya@stanford.edu",
+            "comment": "Pediatric Leg Length Module",
+            "constraints": "",
+            "resources": "",
+            "requires_root": false
+        }
+    },
+    "process_runner": "docker",
+    "processing_runtime": null,
+    "bookkeeper_api_key": "5gaUrNBOSLXwUd41OgqtIWYXmmqYzZ3U",
+    "features": {
+        "dummy_target": false
+    },
+    "processing_logs": {
+        "discard_logs": false,
+        "logs_file_store": null
+    },
+    "email_notification_from": "mercure@mercure.mercure",
+    "support_root_modules": false,
+    "webhook_certificate_location": null,
+    "phi_notifications": false,
+    "server_time": "America/Los_Angeles",
+    "local_time": "America/Los_Angeles",
+    "dicom_retrieve": {
+        "dicom_nodes": [],
+        "destination_folders": []
+    },
+    "store_sample_dicom_tags": false
+}

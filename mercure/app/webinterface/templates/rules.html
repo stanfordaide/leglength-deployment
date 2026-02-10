@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Rules{% endblock %}
+
+{% block extra_head %}
+<script nonce="{{ csp_nonce }}" type="text/javascript" src="{{ url_for('static', path='/js/bulma-quickview.min.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<main role="main">
+    <div class="container">
+        <h1 class="title is-4">Filtering Rules</h1>
+
+        <div class="field is-grouped" style="margin-bottom: 16px;">
+            <div class="control has-icons-left">
+                <input class="input" type="text" id="searchInput" placeholder="Search..." value="">
+                <span class="icon is-small is-left">
+                    <i class="fas fa-search"></i>
+                </span>
+            </div>           
+            <div class="control is-expanded">
+            </div>
+            {% if is_admin %}
+            <div class="">
+                <button class="button is-success" id="showaddmodal"><span class="icon"><i class="fas fa-plus"></i></span><span>Add</span></button>
+            </div>
+            {% endif %}
+        </div>
+    
+        {% for rule_name,rule in rules.items()|sort() %}
+        <div class="card entitycard" data-name="{{rule_name}}">
+            <header class="card-header has-background-light ">
+                <p class="card-header-title card-toggle {% if rule.disabled %}has-text-grey-light{% endif %}">
+                    <span class="icon {% if rule.disabled %}has-text-grey-light{% endif %} has-tooltip-left {% if not rule.disabled %}has-tooltip-success{% endif %}"
+                    data-tooltip=
+                    {% if rule.disabled==True %}
+                    "Disabled"
+                    {% else %}
+                    {% if rule.action=='route' %}"Routing Only"
+                    {% elif rule.action=='both' %}"Processing & Routing"
+                    {% elif rule.action=='process' %}"Processing Only"
+                    {% elif rule.action=='notification' %}"Notification Only"
+                    {% elif rule.action=='discard' %}"Force Discard"
+                    {% else %}""
+                    {% endif %}
+                    {% endif %}>
+                    {% if rule.action=='route' %}<i class="fas fa-directions fa-lg"></i>
+                    {% elif rule.action=='both' %}<i class="fas fa-layer-group fa-lg"></i>
+                    {% elif rule.action=='process' %}<i class="fas fa-microchip fa-lg"></i>
+                    {% elif rule.action=='notification' %}<i class="fas fa-bullhorn fa-lg"></i>
+                    {% elif rule.action=='discard' %}<i class="fas fa-ban fa-lg"></i>
+                    {% else %}<i class=" fas fa-robot fa-lg"></i>
+                    {% endif %}</span>&nbsp;&nbsp;{{ rule_name }}<span style="margin-left: auto;"></span>
+                    {% if rule.fallback==True %}
+                    <span class="has-tooltip-right has-tooltip-success" data-tooltip="Fallback Rule"><i class="fas fa-magnet ruleicon"></i></span>
+                    {% endif %}
+                    {% if rule.priority=='urgent' %}
+                    <span class="has-tooltip-right has-tooltip-success" data-tooltip="Urgent Processing"><i class="fas fa-shipping-fast ruleicon"></i></span>
+                    {% elif rule.priority=='offpeak' %}
+                    <span class="has-tooltip-right has-tooltip-success" data-tooltip="Off-Peak Processing"><i class="fas fa-bed ruleicon"></i></span>
+                    {% endif %}
+                    {% if rule.notification_webhook!='' %}
+                    <span class="has-tooltip-right has-tooltip-success" data-tooltip="Sending Notification"><i class="fas fa-bell ruleicon"></i></span>
+                    {% endif %}
+                </p>
+                <a class="card-header-icon card-toggle">
+                    <i class="fa fa-angle-down"></i>
+                </a>
+            </header>
+            <div class="card-content entitycard-content is-hidden">
+                <div class="content">
+                    <table class="table is-narrow" style="margin-bottom: 8px;">
+                        <col width="150">
+                        <tr>
+                            <td>Rule:</td>
+                            <td>{{ rule.rule }}</td>
+                        </tr>
+                        {% if (rule.action=='process') or (rule.action=='both') %}
+                        <tr>
+                            <td>Processing:</td>
+                            <td>{% if rule.processing_module is string %}
+                                {{ rule.processing_module }}
+                                {% else %}
+                                {% for module_name in rule.processing_module %} {{ module_name }} {% if not loop.last %}&#10140; {% endif %} {% endfor %}
+                                {% endif %}</td>
+                        </tr>
+                        {% endif %}
+                        {% if (rule.action=='route') or (rule.action=='both') %}
+                        <tr>
+                            <td>Routing:</td>
+                            <td>{% if rule.target is string %}
+                                {{ rule.target }}
+                                {% else %}
+                                {% for target_name in rule.target %}{{ target_name }}{% if not loop.last %}, {% endif %}{% endfor %}
+                                {% endif %}</td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <td>Contact:</td>
+                            <td>{{ rule.contact }}</td>
+                        </tr>
+                        <tr>
+                            <td>Comment:</td>
+                            <td>{{ rule.comment }}</td>
+                        </tr>
+                    </table>
+                    <div class="buttons is-right">
+                        {% if is_admin %}
+                        <a class="button duplicate-me" data-value='{{rule_name}}'><span class="icon"><i class="fas fa-copy"></i></span><span>Duplicate</span></a>
+                        <a class="button is-success" href="/rules/edit/{{rule_name}}"><span class="icon"><i class="fas fa-pen"></i></span><span>Edit</span></a>
+                        <button class="button is-danger confirm-me" value="{{rule_name}}"><span class="icon"><i class="fas fa-trash-alt"></i></span><span>Delete</span></button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        <nav class="pagination is-centered" role="navigation" aria-label="pagination" style="margin-top: 16px;">
+            <ul class="pagination-list" id="paginationList">
+            </ul>
+        </nav>
+        
+    </div>
+
+    <div class="modal" id="deletemodal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Delete Rule?</p>
+            </header>
+            <section class="modal-card-body">
+                <div class="field">
+                    Are you sure to delete the rule? This cannot be undone.
+                </div>
+                <div class="field" style="margin-top: 20px;">
+                    <p class="control">
+                        <button id="confirmmodal" class="button is-danger">Delete</button>
+                        <button id="closemodal" class="button">Cancel</button>
+                    </p>
+                </div>
+            </section>
+        </div>
+    </div>
+    <div class="modal" id="addmodal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Add New Rule</p>
+            </header>
+            <section class="modal-card-body">
+                <form method="post">
+                    <div class="field">
+                        <p class="control">
+                            <input class="input" id="addnewname" type="text" required pattern="[0-9a-zA-Z_\-]+"
+                                placeholder="Name of rule" name="name" autofocus>
+                        </p>
+                    </div>
+                    <div class="field">
+                        <p class="control" style="margin-top: 20px;">
+                            <button id="confirmaddmodal" class="button is-success">Create</button>
+                            <a id="closeaddmodal" class="button">Cancel</a>
+                        </p>
+                    </div>
+                </form>
+            </section>
+        </div>
+    </div>
+
+    <div class="modal" id="duplicate-modal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Duplicate rule "<span id="duplicate-name"></span>"</p>
+            </header>
+            <section class="modal-card-body">
+`                <form method="post" action="duplicate/">
+                   <input type="hidden" name="old_name" id="duplicate-name-input">
+                    <div class="field">
+                        <p class="control">
+                            <input class="input" id="duplicate-newname" type="text" required pattern="[0-9a-zA-Z_\-]+"
+                                placeholder="Name of new rule" name="new_name" autofocus>
+                        </p>
+                    </div>
+                    <div class="field">
+                        <p class="control" style="margin-top: 20px;">
+                            <button id="confirm-duplicate-modal" class="button is-success">Create</button>
+                            <a id="closeduplicatemodal" class="button">Cancel</a>
+                        </p>
+                    </div>
+                </form>
+            </section>
+        </div>
+    </div>
+</main>
+
+<script nonce="{{ csp_nonce }}">
+    document.addEventListener('DOMContentLoaded', function () {
+        let cardToggles = document.getElementsByClassName('card-toggle');
+        for (let i = 0; i < cardToggles.length; i++) {
+            cardToggles[i].addEventListener('click', e => {
+                e.currentTarget.parentElement.parentElement.childNodes[3].classList.toggle('is-hidden');
+            });
+        }
+        paginate(document.getElementsByClassName('entitycard'))
+    });
+
+    function showAddModal(val) {
+        $("#addnewname").val("");
+        $("#addmodal").addClass("is-active");
+        $("#addnewname").focus();
+    }
+    $('#showaddmodal').click(showAddModal);
+    function showDuplicateModal(val) {
+        $("#duplicate-newname").val("");
+        $("#duplicate-modal").addClass("is-active");
+        $("#duplicate-newname").focus();
+        $("#duplicate-name").text(val);
+        $("#duplicate-name-input").val(val);
+    }
+    $('.duplicate-me').click((evt) => {
+        showDuplicateModal($(evt.target.closest('.duplicate-me')).attr('data-value'));
+    })
+    $('#closeduplicatemodal').click(()=> $('#duplicate-modal').removeClass('is-active'))
+    var ruleToDelete = "";
+
+    function confirmDelete(evt) {
+        $("#deletemodal").addClass("is-active");
+        ruleToDelete = evt.target.closest('button').value;
+    }
+    $('.confirm-me').click(confirmDelete)
+
+    $(function () {
+        $('#closeaddmodal').click(function () {
+            $("#addmodal").removeClass("is-active");
+        })
+
+        $('#closemodal').click(function () {
+            $("#deletemodal").removeClass("is-active");
+        })
+
+        $('#confirmmodal').click(function () {
+            $("#deletemodal").removeClass("is-active");
+
+            var url = '/rules/delete/' + ruleToDelete;
+            var form = $('<form action="' + url + '" method="post"></form>');
+            $('body').append(form);
+            form.submit();
+        })
+    });
+</script>
+
+{% endblock %}

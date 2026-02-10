@@ -1,0 +1,20 @@
+<tr>
+    <td>Type:</td>
+    <td>DICOM Node</td>
+</tr>
+<tr>
+    <td>Host/IP:</td>
+    <td>{% if target.ip == 'sender' %}<i class="fas fa-exchange-alt fa-lg"></i>&nbsp; Loop back to sender{% else %}{{ target.ip }}{% endif %}</td>
+</tr>
+<tr>
+    <td>Port:</td>
+    <td>{{ target.port }}</td>
+</tr>
+<tr>
+    <td>AET Target:</td>
+    <td>{% if target.pass_receiver_aet %}<span class="tag is-dark">Incoming Receiver AET</span>{% else %}{{ target.aet_target }}{% endif %}</td>
+</tr>
+<tr>
+    <td>AET Source:</td>
+    <td>{% if target.pass_sender_aet %}<span class="tag is-dark">Incoming Sender AET</span>{% else %}{{ target.aet_source }}{% endif %}</td>
+</tr>

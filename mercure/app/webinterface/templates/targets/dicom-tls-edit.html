@@ -1,0 +1,69 @@
+<div class="notification is-info" style="margin-top: 30px;">
+    <i class="fas fa-snowplow"></i>&nbsp;&nbsp;Support for DICOM TLS is experimental at this time.
+</div>
+<div class="field" style="margin-top: 30px;">
+    <label class="label">Host/IP</label>
+    <div class="control">
+        <input name="ip" class="input" required='true' autocomplete='off' type="text"
+            placeholder="Host name or IP" value="{{targets[edittarget]['ip']}}"
+            size="15">
+    </div>
+</div>
+<div class="field">
+    <label class="label">Port</label>
+    <div class="control">
+        <input name="port" class="input" required='true' autocomplete='off' type="number" placeholder="104"
+            minlength="2" maxlength="5" value="{{targets[edittarget]['port']}}">
+    </div>
+</div>
+<div class="field">
+    <label class="label">AET Target</label>
+    <div class="control">
+        <input name="aet_target" class="input" required='true' autocomplete='off' type="text"
+            placeholder="Calling AET" value="{{targets[edittarget]['aet_target']}}"
+            pattern="[0-9a-zA-Z_\-]+">
+    </div>
+</div>
+<div class="field">
+    <div class="control">
+        <input id="pass_receiver_aet_tls" type="checkbox" name="pass_receiver_aet" class="switch is-rounded is-dark" value="True"
+            {% if targets[edittarget]["pass_receiver_aet"]==True %} checked="checked" {% endif%}>
+        <label for="pass_receiver_aet_tls">Pass Incoming Value</label>
+    </div>
+</div>
+<div class="field">
+    <label class="label">AET Source</label>
+    <div class="control">
+        <input name="aet_source" class="input" required='true' autocomplete='off' type="text"
+            placeholder="Outgoing AET" value="{{targets[edittarget]['aet_source']}}"
+            pattern="[0-9a-zA-Z_\-]+">
+    </div>
+</div>
+<div class="field">
+    <div class="control">
+        <input id="pass_sender_aet_tls" type="checkbox" name="pass_sender_aet" class="switch is-rounded is-dark" value="True"
+            {% if targets[edittarget]["pass_sender_aet"]==True %} checked="checked" {% endif%}>
+        <label for="pass_sender_aet_tls">Pass Incoming Value</label>
+    </div>
+</div>
+<div class="field">
+    <label class="label">TLS Key</label>
+    <div class="control">
+        <input name="tls_key" class="input" required='true' autocomplete='off' type="text"
+            placeholder="TLS Key" value="{{targets[edittarget]['tls_key']}}">
+    </div>
+</div>
+<div class="field">
+    <label class="label">TLS Certificate</label>
+    <div class="control">
+        <input name="tls_cert" class="input" required='true' autocomplete='off' type="text"
+            placeholder="TLS Certificate" value="{{targets[edittarget]['tls_cert']}}">
+    </div>
+</div>
+<div class="field">
+    <label class="label">CA Certificate</label>
+    <div class="control">
+        <input name="ca_cert" class="input" required='true' autocomplete='off' type="text"
+            placeholder="CA Certificate" value="{{targets[edittarget]['ca_cert']}}">
+    </div>
+</div>

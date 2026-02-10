@@ -1,0 +1,41 @@
+# Grafana Datasources Configuration
+# Auto-provisions datasources on startup
+
+apiVersion: 1
+
+datasources:
+  # Prometheus - primary metrics store
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+
+  # Graphite - Mercure metrics
+  - name: Graphite
+    type: graphite
+    access: proxy
+    url: http://graphite:80
+    editable: false
+    jsonData:
+      graphiteVersion: "1.1"
+
+  # Workflow PostgreSQL - for direct SQL queries if needed
+  - name: Workflow-DB
+    type: postgres
+    url: workflow-db:5432
+    database: workflow_tracking
+    user: workflow
+    secureJsonData:
+      password: workflow123
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    editable: false

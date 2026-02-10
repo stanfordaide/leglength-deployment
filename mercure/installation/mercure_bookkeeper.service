@@ -1,0 +1,17 @@
+[Unit]
+Description=mercure Bookkeeper
+Documentation=https://mercure-imaging.org/docs
+After=network.target postgresql.service
+Requires=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mercure/app
+ExecStart=/opt/mercure/env/bin/python /opt/mercure/app/bookkeeper.py
+ExecStartPost=/bin/sleep 2
+Restart=on-failure
+RestartSec=3
+User=mercure
+
+[Install]
+WantedBy=multi-user.target

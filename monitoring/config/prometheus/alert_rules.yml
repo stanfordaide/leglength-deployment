@@ -1,0 +1,130 @@
+# Prometheus Alert Rules for Leg Length AI Pipeline
+
+groups:
+  # =============================================================================
+  # STORAGE ALERTS
+  # =============================================================================
+  - name: storage
+    rules:
+      - alert: DiskSpaceWarning
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space low on {{ $labels.instance }}"
+          description: "Disk space is below 20% ({{ $value | printf \"%.1f\" }}% free)"
+
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space critical on {{ $labels.instance }}"
+          description: "Disk space is below 10% ({{ $value | printf \"%.1f\" }}% free)"
+
+      # Specific alert for DICOM storage
+      - alert: DicomStorageWarning
+        expr: (node_filesystem_avail_bytes{mountpoint=~"/dataNAS.*|/opt/orthanc.*"} / node_filesystem_size_bytes{mountpoint=~"/dataNAS.*|/opt/orthanc.*"}) * 100 < 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DICOM storage running low"
+          description: "DICOM storage is below 25% free ({{ $value | printf \"%.1f\" }}% remaining)"
+
+  # =============================================================================
+  # CONTAINER ALERTS
+  # =============================================================================
+  - name: containers
+    rules:
+      - alert: ContainerDown
+        expr: absent(container_last_seen{name=~"orthanc|mercure.*|workflow-api|grafana"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ $labels.name }} is down"
+          description: "Container {{ $labels.name }} has been down for more than 2 minutes"
+
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total{name=~"orthanc|mercure.*|workflow-api"}[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} CPU usage is above 80% for 10 minutes"
+
+      - alert: ContainerHighMemory
+        expr: (container_memory_usage_bytes{name=~"orthanc|mercure.*|workflow-api"} / container_spec_memory_limit_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} memory usage is above 85%"
+
+      - alert: ContainerRestarting
+        expr: increase(container_restart_count{name=~"orthanc|mercure.*|workflow-api"}[1h]) > 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} restarting frequently"
+          description: "Container {{ $labels.name }} has restarted {{ $value }} times in the last hour"
+
+  # =============================================================================
+  # WORKFLOW ALERTS
+  # =============================================================================
+  - name: workflow
+    rules:
+      - alert: WorkflowAPIDown
+        expr: up{job="workflow-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Workflow API is down"
+          description: "The workflow tracking API has been unreachable for 2 minutes"
+
+      - alert: NoStudiesReceived
+        expr: increase(studies_received_total[24h]) == 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "No studies received in 24 hours"
+          description: "No new studies have been received in the last 24 hours. Check if scanner is operational."
+
+  # =============================================================================
+  # INFRASTRUCTURE ALERTS
+  # =============================================================================
+  - name: infrastructure
+    rules:
+      - alert: HighLoad
+        expr: node_load15 > 4
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High system load"
+          description: "15-minute load average is {{ $value }}"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on host"
+          description: "Memory usage is above 90% ({{ $value | printf \"%.1f\" }}% used)"
+
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus is down"
+          description: "Prometheus monitoring is not running"

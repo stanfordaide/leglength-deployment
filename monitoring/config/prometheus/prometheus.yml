@@ -1,0 +1,84 @@
+# Prometheus Configuration
+# Scrapes metrics from all components of the leg length AI pipeline
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'leglength-deployment'
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # =============================================================================
+  # SELF-MONITORING
+  # =============================================================================
+  
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # =============================================================================
+  # INFRASTRUCTURE METRICS
+  # =============================================================================
+  
+  # Host system metrics (disk, CPU, memory, network)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'host'
+
+  # Docker container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metric_relabel_configs:
+      # Only keep metrics for our containers
+      - source_labels: [container_label_com_docker_compose_project]
+        regex: 'leglength-deployment|orthanc|mercure'
+        action: keep
+
+  # =============================================================================
+  # APPLICATION METRICS
+  # =============================================================================
+  
+  # Pushgateway for batch job metrics (AI inference)
+  - job_name: 'pushgateway'
+    static_configs:
+      - targets: ['pushgateway:9091']
+    honor_labels: true
+
+  # Workflow API metrics (if we add /metrics endpoint)
+  - job_name: 'workflow-api'
+    static_configs:
+      - targets: ['workflow-api:5000']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    # Don't fail if endpoint doesn't exist yet
+    scrape_timeout: 10s
+
+  # =============================================================================
+  # EXTERNAL SERVICES (configure IPs/hostnames as needed)
+  # =============================================================================
+  
+  # Orthanc PACS (if Orthanc prometheus plugin is enabled)
+  # - job_name: 'orthanc'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:8042']
+  #   metrics_path: '/metrics'
+  
+  # Grafana
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: '/metrics'

@@ -1,0 +1,328 @@
+{% extends "dashboards/dashboards.html" %}
+
+{% block title %}Self-Test{% endblock %}
+
+{% block extra_head %}
+    <script nonce="{{ csp_nonce }}" type="text/javascript" src="{{ url_for('static', path='DataTables/datatables.min.js') }}"></script>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', path='DataTables/datatables.min.css') }}"/>  
+    <!-- <script src="https://unpkg.com/hyperscript.org@0.9.5"></script> -->
+{% endblock %}
+
+{% block dashboard_content %}
+<main role="main">
+    <h1 class="title is-4">Self-Test</h1>
+    <div class="container">
+        <div class="columns">
+            <div class="column is-one-third">
+                <p class="block">The self-test is designed to check whether mercure is configured properly and can process a simple case. Each test creates some routing rules and targets, 
+                                 submits a synthetic dicom series to the receiver, and checks to see if it is successfully routed. Because it loops back to
+                                 mercure itself, it doesn't rely on any other services.
+                </p>
+                <p class="block">You may need to manually set the receiver and ui host or port. Any field left blank will be assumed to be the default for this mercure installation type. </p>
+                <p class="block">Setting type to "process" will additionally run a dummy processing step on the dicom series.</p>
+                <p class="block">Below is the list of submitted tests and task events produced.</p>
+            </div>
+            <div class="column is-one-third">
+            </div>
+            <div class="column is-one-third">
+                <!-- action="/self_test" -->
+              <form class="box" id="test-form" hx-post="/self_test" hx-target="#test_submit_result" hx-swap="innerHTML">
+              <div class="field is-horizontal">
+                <div class="field-label is-normal">
+                  <label class="label">Action</label>
+                </div>
+                <div class="field-body">
+                  <div class="field">
+                    <div class="control is-expanded">
+                      <div class="select is-fullwidth">
+                        <select name="type">
+                          <option>route</option>
+                          <option>process</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="field is-horizontal">
+                <div class="field-label is-normal">
+                  <label class="label">Scope</label>
+                </div>
+                <div class="field-body">
+                  <div class="field">
+                    <div class="control is-expanded">
+                      <div class="select is-fullwidth">
+                        <select name="rule_type">
+                          <option>series</option>
+                          <option>study</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field is-horizontal">
+                <div class="field-label is-normal">
+                  <label class="label">Receiver</label>
+                </div>
+                <div class="field-body  has-addons">
+                  <div class="field has-addons">
+                    <div class="control">
+                      <input name="receiver_host" class="input" type="text" placeholder="host" value="">
+                    </div>
+                    <p class="control">
+                        <a class="button is-static">
+                          :
+                        </a>
+                    </p>
+                    <div class="control">
+                      <input name="receiver_port" id="receiver_port"  class="input" type="text" placeholder="port" value="">
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+              <div class="field is-horizontal">
+                <div class="field-label is-normal">
+                  <label class="label">UI</label>
+                </div>
+                <div class="field-body">
+                  <div class="field has-addons">
+                    <div class="control">
+                      <input name="webui_host" class="input" type="text" placeholder="host" value="">
+                    </div>
+                    <p class="control">
+                        <a class="button is-static">
+                          :
+                        </a>
+                      </p>
+                    <div class="control">
+                      <input name="webui_port" id="webui_port" class="input" type="text" placeholder="port" value="">
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+                           
+              <div class="field is-horizontal">
+                <div class="field-label">
+                  <!-- Left empty for spacing -->
+                </div>
+                <div class="field-body" style="margin-top: 10px;">
+                  <div class="field">
+                    <div class="control">
+                      <button type="submit" class="button is-success">
+                        <span class="icon"><i class="fas fa-play"></i></span><span>Run Test</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div> 
+            </form>
+
+
+        <div class="column is-one-third">
+
+            <article class="message is-link is-hidden" id="test_submit_result_box">
+                <div class="message-header ">
+                  <p>Submission info</p>
+                </div>
+                <pre id="test_submit_result" class="message-body"></pre>
+              </article>
+
+        </div>
+        </div>
+        <div class="columns" style="margin-top: 20px;">
+        <div class="column is-one-third">
+            <table class="table is-narrow is-hoverable is-fullwidth jobtable" id="test-table">
+                <thead>
+                    <tr>
+                        <th>id</th>
+                        <th>task_id</th>
+                        <th>time_begin</th>
+                        <th>status</th>
+                        <th>type</th>
+                        <th>rule_type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+        <div class="column">
+            <table class="table is-narrow is-hoverable is-fullwidth jobtable" id="task-events-table">
+                <thead>
+                    <tr>
+                        <th>task_id</th>
+                        <th>event</th>
+                        <th>sender</th>
+                        <th>target</th>
+                        <th>info</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+            </div>
+            </div>
+    </div>
+</main>
+<script nonce="{{ csp_nonce }}">
+$(document).ready(function () {      
+
+$("#test-form").on('htmx:afterOnLoad', (event) => {
+    $("#test_submit_result_box").removeClass("is-hidden")
+    load_tests()
+    for (var n=1; n<15;n++){
+        setTimeout(load_tests, 10000*n)
+    }
+});
+
+function only_numbers(el) {
+  el.value=el.value.replace(/[^\d]/g,'')
+}
+$('#receiver_port').on('keyup', (evt) => only_numbers(evt.target))
+$('#webui_port').on('keyup', (evt) => only_numbers(evt.target))
+
+
+$('#task-events-table').DataTable( {
+    "paging": false,
+    "ordering": false,
+    "searching": false,
+    "language": {
+       "emptyTable": "Select a test."
+    },
+    dom: 'Bfrtip',
+   "scrollY": "740px",
+   "scrollX": false,
+   "scrollCollapse": true,   
+   "columnDefs": [{ "targets": '_all', "render": DataTable.render.text() },
+            { "visible": false, "targets": 0, "render": DataTable.render.text() },
+    ],
+    "drawCallback": function (settings) {
+            var api = this.api();
+            var rows = api.rows({ page: 'current' }).nodes();
+            var last = null;
+ 
+            api
+                .column(0, { page: 'current' })
+                .data()
+                .each(function (group, i) {
+                    if (last !== group) {
+                        $(rows)
+                            .eq(i)
+                            .before('<tr class="group"><td colspan="5" class="has-text-white has-background-black">Task ' + group + '</td></tr>');
+ 
+                        last = group;
+                    }
+                });
+        },
+})
+$('#test-table').DataTable( {
+//   "paging":   false,
+   "ordering": false,
+   "info": false,
+   "searching": false,
+   "columns": [
+            { data: 'id' },
+            { data: 'task_id' },
+            { data: 'time_begin' },
+            { data: 'status' },
+            { data: 'type' },
+            { data: 'rule_type' },
+        ],
+   "rowId": "id",
+   "language": {
+       "emptyTable": "No task data available."
+   },
+   "columnDefs": [{ "targets": '_all', "render": DataTable.render.text() },
+            { "visible": false, "targets": 0, "render": DataTable.render.text() },
+            { "visible": false, "targets": 1, "render": DataTable.render.text() }
+    ],
+   select: {
+            style: 'single'
+   },
+   dom: 'Bfrtip',
+   "scrollY": "740px",
+   "scrollX": false,
+   "scrollCollapse": true,   
+} ).on( 'select deselect', function () {
+    var selectedRows = $('#test-table').DataTable().rows( { selected: true } )
+    if (selectedRows.count()>0){
+        console.log( selectedRows.data()[0].id)
+        $.ajax({
+            type: 'GET',
+            url: '/api/get-task-events',
+            data: {'task_id': selectedRows.data()[0].task_id},
+            dataType: 'json',
+            error: function () {
+                // $('#erroralert').show();
+            },
+            success: function (data) {
+                console.log(data);
+                // $('#erroralert').hide();
+                var eventstable = $('#task-events-table').DataTable().clear();
+                Object.keys(data).forEach(function (key) {
+                    // console.log(data[key])
+                    eventstable.row.add([data[key]["task_id"].slice(0,8) || "", data[key]["event"], data[key]["sender"],  data[key]["target"], data[key]["info"]])
+                    // jobtable.row.add( [ key, data[key]["ACC"], data[key]["MRN"], data[key]["Scope"], data[key]["FailStage"] ] );
+                })
+                eventstable.draw();
+            },
+            // complete: function (data) {
+            //     $('#loadingspinner').hide();
+            // },
+            timeout: 3000
+        });
+    }
+} );
+
+    load_tests()
+});
+
+function load_tests() {
+$.ajax({
+    type: 'GET',
+    url: '/api/get-tests',
+    data: {},
+    dataType: 'json',
+    error: function () {
+        // $('#erroralert').show();
+    },
+    success: function (data) {
+        // $('#erroralert').hide();
+        var jobtable = $('#test-table').DataTable()
+        var selected = jobtable.rows( { selected: true } )
+        var selected_id = null
+        if ( selected.count() > 0 ){
+            selected_id = selected.data()[0].id;
+        }
+        console.log(data);
+        jobtable.clear();
+        Object.keys(data).forEach(function (key) {
+            // console.log(data[key])
+            jobtable.row.add({
+                            "id": data[key]["id"], 
+                            "task_id": data[key]["task_id"], 
+                            "time_begin":data[key]["time_begin"], 
+                            "status": data[key]["status"],
+                            "type": data[key]["type"], 
+                            "rule_type": data[key]["rule_type"]
+                          })
+            // jobtable.row.add( [ key, data[key]["ACC"], data[key]["MRN"], data[key]["Scope"], data[key]["FailStage"] ] );
+        })
+        jobtable.draw();
+        if (selected_id ) {
+            jobtable.row( "#"+selected_id ).select()
+        }
+    },
+    // complete: function (data) {
+    //     $('#loadingspinner').hide();
+    // },
+    timeout: 3000
+});
+}
+</script>
+{% endblock %}

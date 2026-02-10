@@ -1,0 +1,1826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RADWATCH Operator Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        midnight: {
+                            900: '#0a0e17',
+                            800: '#111827',
+                            700: '#1a2234',
+                            600: '#243044',
+                        },
+                        neon: {
+                            blue: '#00d4ff',
+                            green: '#00ff88',
+                            yellow: '#ffdd00',
+                            red: '#ff4757',
+                            purple: '#a855f7',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .glow-green { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
+        .glow-red { box-shadow: 0 0 20px rgba(255, 71, 87, 0.3); }
+        .glow-yellow { box-shadow: 0 0 20px rgba(255, 221, 0, 0.3); }
+        .gradient-border {
+            background: linear-gradient(135deg, #00d4ff20, #a855f720);
+            padding: 1px;
+        }
+        .gradient-border > div {
+            background: #111827;
+        }
+    </style>
+</head>
+<body class="bg-midnight-900 text-slate-100 min-h-screen font-sans">
+<!-- Load configuration before main script -->
+<script src="config.js"></script>
+
+<div x-data="dashboard()" x-init="init()" class="min-h-screen">
+    
+    <!-- Top Navigation Bar -->
+    <nav class="bg-midnight-900 border-b border-midnight-700 sticky top-0 z-50">
+        <div class="container mx-auto px-6">
+            <div class="flex justify-between items-center h-10">
+                <div class="flex items-center gap-6">
+                    <span class="font-bold text-sm tracking-widest text-neon-blue">RADWATCH</span>
+                    <div class="h-4 w-px bg-midnight-600"></div>
+                    <div class="flex items-center gap-4 text-xs">
+                        <a href="#" class="text-slate-300 hover:text-white transition-colors font-medium">Dashboard</a>
+                        <a href="#" @click.prevent="showAbout = true" class="text-slate-500 hover:text-slate-300 transition-colors">About</a>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 text-xs text-slate-500">
+                    <a :href="orthancWebUrl" target="_blank" class="hover:text-slate-300 transition-colors">Orthanc UI →</a>
+                    <a :href="orthancWebUrl + '/ohif/'" target="_blank" class="hover:text-slate-300 transition-colors">OHIF Viewer →</a>
+                    <a :href="grafanaUrl" target="_blank" class="hover:text-slate-300 transition-colors">Grafana →</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Header -->
+    <header class="bg-midnight-800 border-b border-midnight-600">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div class="text-4xl">📡</div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight">RADWATCH</h1>
+                        <p class="text-xs text-slate-500 font-mono">OPERATOR DASHBOARD</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-6">
+                    <div class="text-right">
+                        <div class="text-xs text-slate-500">Last updated</div>
+                        <div class="text-sm font-mono text-neon-blue" x-text="lastUpdate"></div>
+                    </div>
+                    <button @click="refresh()" 
+                            class="px-4 py-2 bg-midnight-700 border border-midnight-600 rounded-lg hover:bg-midnight-600 hover:border-neon-blue transition-all flex items-center gap-2">
+                        <svg class="w-4 h-4" :class="loading && 'animate-spin'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- About Modal -->
+    <div x-show="showAbout" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="showAbout = false">
+        <div class="absolute inset-0 bg-black/70" @click="showAbout = false"></div>
+        <div class="relative bg-midnight-800 border border-midnight-600 rounded-xl max-w-lg w-full p-6 shadow-2xl">
+            <button @click="showAbout = false" class="absolute top-4 right-4 text-slate-500 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            
+            <div class="flex items-center gap-3 mb-4">
+                <span class="text-3xl">📡</span>
+                <div>
+                    <h2 class="text-xl font-bold">RADWATCH</h2>
+                    <p class="text-xs text-slate-500">Operator Dashboard</p>
+                </div>
+            </div>
+            
+            <div class="space-y-4 text-sm text-slate-300">
+                <p>
+                    RADWATCH is a monitoring and management interface for the Orthanc PACS system,
+                    designed to provide operators with real-time visibility into DICOM routing workflows.
+                </p>
+                
+                <div class="bg-midnight-700 rounded-lg p-4">
+                    <h3 class="font-semibold text-white mb-2">Features</h3>
+                    <ul class="space-y-1 text-slate-400">
+                        <li>• Real-time service health monitoring</li>
+                        <li>• DICOM destination management & testing</li>
+                        <li>• Study workflow tracking & visualization</li>
+                        <li>• Pipeline analytics & QI dashboards</li>
+                    </ul>
+                </div>
+                
+                <div class="flex items-center justify-between pt-4 border-t border-midnight-600 text-xs text-slate-500">
+                    <span>Stanford AIDE Lab</span>
+                    <span class="font-mono">v1.0.0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mercure AI Processing Details Modal -->
+    <div x-show="showMercureModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="showMercureModal = false">
+        <div class="absolute inset-0 bg-black/70" @click="showMercureModal = false"></div>
+        <div class="relative bg-midnight-800 border border-neon-purple/50 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6 shadow-2xl">
+            <button @click="showMercureModal = false" class="absolute top-4 right-4 text-slate-500 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            
+            <div class="flex items-center gap-3 mb-4">
+                <span class="text-3xl">🤖</span>
+                <div>
+                    <h2 class="text-xl font-bold text-neon-purple">Mercure AI Processing</h2>
+                    <p class="text-xs text-slate-500 font-mono" x-text="mercureStudyDetail?.study_uid?.substring(0, 30) + '...' || 'Loading...'"></p>
+                </div>
+            </div>
+            
+            <template x-if="mercureStudyDetail">
+                <div class="space-y-4 text-sm">
+                    <!-- Processing Status -->
+                    <div class="bg-midnight-700 rounded-lg p-4">
+                        <h3 class="font-semibold text-white mb-3 flex items-center gap-2">
+                            <span>📊</span> Processing Status
+                        </h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-slate-500 text-xs mb-1">Status</div>
+                                <div class="font-mono"
+                                     :class="mercureStudyDetail.processing?.status === 'completed' ? 'text-neon-green' : 
+                                             mercureStudyDetail.processing?.status === 'failed' ? 'text-neon-red' : 
+                                             'text-amber-400'"
+                                     x-text="mercureStudyDetail.processing?.status || 'Unknown'"></div>
+                            </div>
+                            <div>
+                                <div class="text-slate-500 text-xs mb-1">Duration</div>
+                                <div class="font-mono" x-text="formatMercureDuration(mercureStudyDetail.processing?.duration_seconds)"></div>
+                            </div>
+                            <div>
+                                <div class="text-slate-500 text-xs mb-1">Started</div>
+                                <div class="font-mono text-xs" x-text="mercureStudyDetail.processing?.started_at ? new Date(mercureStudyDetail.processing.started_at).toLocaleString() : '—'"></div>
+                            </div>
+                            <div>
+                                <div class="text-slate-500 text-xs mb-1">Completed</div>
+                                <div class="font-mono text-xs" x-text="mercureStudyDetail.processing?.completed_at ? new Date(mercureStudyDetail.processing.completed_at).toLocaleString() : '—'"></div>
+                            </div>
+                        </div>
+                        <div x-show="mercureStudyDetail.processing?.error" class="mt-3 p-2 bg-neon-red/10 border border-neon-red/30 rounded text-neon-red text-xs">
+                            <span class="font-semibold">Error:</span> <span x-text="mercureStudyDetail.processing?.error"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Series Received -->
+                    <div class="bg-midnight-700 rounded-lg p-4">
+                        <h3 class="font-semibold text-white mb-3 flex items-center gap-2">
+                            <span>📁</span> Series in Mercure
+                            <span class="text-xs bg-midnight-600 px-2 py-0.5 rounded" x-text="mercureStudyDetail.series_count + ' series'"></span>
+                        </h3>
+                        <div class="space-y-2 max-h-40 overflow-y-auto">
+                            <template x-for="s in mercureStudyDetail.series || []" :key="s.series_uid">
+                                <div class="flex justify-between items-center text-xs bg-midnight-600 rounded px-3 py-2">
+                                    <div>
+                                        <span class="text-slate-400" x-text="s.modality"></span>
+                                        <span class="ml-2" x-text="s.description || 'No description'"></span>
+                                    </div>
+                                    <span class="text-slate-500 font-mono" x-text="s.received_at ? new Date(s.received_at).toLocaleTimeString() : ''"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <!-- Event Timeline -->
+                    <div x-show="mercureStudyDetail.events?.length > 0" class="bg-midnight-700 rounded-lg p-4">
+                        <h3 class="font-semibold text-white mb-3 flex items-center gap-2">
+                            <span>📜</span> Event Timeline
+                        </h3>
+                        <div class="space-y-1 max-h-48 overflow-y-auto text-xs">
+                            <template x-for="(e, idx) in mercureStudyDetail.events || []" :key="idx">
+                                <div class="flex items-start gap-2 py-1 border-l-2 border-midnight-500 pl-3">
+                                    <span class="text-slate-500 font-mono whitespace-nowrap" x-text="e.time ? new Date(e.time).toLocaleTimeString() : ''"></span>
+                                    <span class="text-neon-blue" x-text="e.event"></span>
+                                    <span x-show="e.target" class="text-slate-400">→ <span x-text="e.target"></span></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <!-- Full Study UID -->
+                    <div class="bg-midnight-700 rounded-lg p-3">
+                        <div class="text-slate-500 text-xs mb-1">Study Instance UID</div>
+                        <div class="font-mono text-xs text-slate-400 break-all" x-text="mercureStudyDetail.study_uid"></div>
+                    </div>
+                </div>
+            </template>
+            
+            <div x-show="!mercureStudyDetail" class="text-center text-slate-500 py-8">
+                <div class="animate-spin text-4xl mb-2">⏳</div>
+                Loading Mercure data...
+            </div>
+        </div>
+    </div>
+
+    <main class="container mx-auto px-6 py-8">
+        
+        <!-- Status Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <!-- Services -->
+            <div class="gradient-border rounded-xl">
+                <div class="rounded-xl p-5">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-4xl font-bold font-mono" x-text="services.healthy + '/' + services.total"></div>
+                            <div class="text-slate-500 text-sm mt-1">Services Running</div>
+                        </div>
+                        <div class="text-3xl" x-text="services.healthy === services.total ? '✅' : '⚠️'"></div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-midnight-600">
+                        <span x-show="services.healthy === services.total" class="text-neon-green text-sm">All systems operational</span>
+                        <span x-show="services.healthy !== services.total" class="text-neon-yellow text-sm">Some services need attention</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mercure AI Integration -->
+            <div class="rounded-xl p-5"
+                 :class="mercureStatus.available ? 'bg-neon-purple/10 border-2 border-neon-purple/50' : 'gradient-border'">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <div class="text-2xl font-bold font-mono" x-text="mercureStatus.available ? 'ON' : 'OFF'"></div>
+                        <div class="text-slate-500 text-sm mt-1">Mercure AI</div>
+                    </div>
+                    <div class="text-3xl" x-text="mercureStatus.available ? '🤖' : '⚫'"></div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-midnight-600 text-sm">
+                    <span x-show="mercureStatus.available" class="text-neon-purple">AI tracking enabled</span>
+                    <span x-show="!mercureStatus.available" class="text-slate-500">Not configured</span>
+                </div>
+            </div>
+
+            <!-- Studies -->
+            <div class="gradient-border rounded-xl">
+                <div class="rounded-xl p-5">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-4xl font-bold font-mono" x-text="stats.studies?.toLocaleString() || '—'"></div>
+                            <div class="text-slate-500 text-sm mt-1">Total Studies</div>
+                        </div>
+                        <div class="text-3xl">📋</div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-midnight-600 text-sm text-slate-400">
+                        <span x-text="(stats.instances || 0).toLocaleString()"></span> instances
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storage -->
+            <div class="gradient-border rounded-xl">
+                <div class="rounded-xl p-5">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-4xl font-bold font-mono" x-text="formatSize(stats.diskSize)"></div>
+                            <div class="text-slate-500 text-sm mt-1">Storage Used</div>
+                        </div>
+                        <div class="text-3xl">💾</div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-midnight-600 text-sm text-slate-400">
+                        <span x-text="stats.patients || 0"></span> patients
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stuck -->
+            <div class="rounded-xl p-5 cursor-pointer transition-all"
+                 :class="stuck.length > 0 ? 'bg-neon-red/10 border-2 border-neon-red glow-red' : 'gradient-border'"
+                 @click="stuck.length > 0 && (showStuckModal = true)">
+                <div :class="stuck.length === 0 && 'rounded-xl'">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-4xl font-bold font-mono" x-text="stuck.length"></div>
+                            <div class="text-slate-500 text-sm mt-1">Stuck Studies</div>
+                        </div>
+                        <div class="text-3xl" x-text="stuck.length > 0 ? '🚨' : '✨'"></div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-midnight-600 text-sm">
+                        <span x-show="stuck.length > 0" class="text-neon-red">Click to review</span>
+                        <span x-show="stuck.length === 0" class="text-neon-green">All routes healthy</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-6">
+            
+            <!-- Left Column: Destinations + Quick Actions -->
+            <div class="space-y-6">
+                
+                <!-- Destinations -->
+                <section class="bg-midnight-800 rounded-xl border border-midnight-600 overflow-hidden">
+                    <div class="px-5 py-4 border-b border-midnight-600 flex justify-between items-center">
+                        <h2 class="font-semibold flex items-center gap-2">
+                            <span class="text-xl">🌐</span> DICOM Destinations
+                        </h2>
+                        <div class="flex gap-2">
+                            <button @click="testAllDestinations()" 
+                                    class="text-xs px-3 py-1 bg-midnight-700 rounded hover:bg-midnight-600 border border-midnight-600 hover:border-neon-green transition-all">
+                                Test All
+                            </button>
+                            <button @click="clearSavedStatuses()" 
+                                    class="text-xs px-3 py-1 bg-midnight-700 rounded hover:bg-midnight-600 border border-midnight-600 hover:border-slate-500 transition-all"
+                                    title="Clear saved test results">
+                                Clear
+                            </button>
+                            <button @click="openAddDestination()" 
+                                    class="text-xs px-3 py-1 bg-midnight-700 rounded hover:bg-midnight-600 border border-midnight-600 hover:border-neon-blue transition-all">
+                                + Add
+                            </button>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-midnight-700">
+                        <template x-for="dest in destinations" :key="dest.name">
+                            <div class="px-5 py-3 flex items-center justify-between hover:bg-midnight-700/50 transition-colors group">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl" x-text="dest.status === 'online' ? '✅' : dest.status === 'slow' ? '⚠️' : dest.status === 'offline' ? '❌' : '❔'"></span>
+                                    <div>
+                                        <div class="font-medium font-mono text-sm" x-text="dest.name"></div>
+                                        <div class="text-xs text-slate-500" x-text="dest.aet + ' @ ' + dest.host + ':' + dest.port"></div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <div class="text-right">
+                                        <span class="text-xs text-slate-500 font-mono block" x-text="dest.responseTime ? dest.responseTime + 'ms' : ''"></span>
+                                        <span class="text-xs text-slate-600" x-text="dest.lastTested ? formatTimeAgo(dest.lastTested) : ''"></span>
+                                    </div>
+                                    <button @click="testDestination(dest.name)" 
+                                            class="text-xs px-2 py-1 bg-midnight-600 rounded hover:bg-neon-blue hover:text-midnight-900 transition-all">
+                                        Test
+                                    </button>
+                                    <button @click="openEditDestination(dest)" 
+                                            class="text-xs px-2 py-1 bg-midnight-600 rounded hover:bg-neon-yellow hover:text-midnight-900 transition-all">
+                                        Edit
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="destinations.length === 0" class="px-5 py-8 text-center text-slate-500">
+                            <div class="text-3xl mb-2">📡</div>
+                            <div>No destinations configured</div>
+                            <button @click="openAddDestination()" 
+                                    class="mt-3 text-sm px-4 py-2 bg-midnight-700 rounded-lg hover:bg-midnight-600 border border-midnight-600 hover:border-neon-blue transition-all">
+                                Add your first destination
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Quick Links -->
+                <section class="bg-midnight-800 rounded-xl border border-midnight-600 p-5">
+                    <h2 class="font-semibold mb-4 flex items-center gap-2">
+                        <span class="text-xl">🔗</span> Quick Links
+                    </h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <a :href="orthancWebUrl" target="_blank"
+                           class="px-4 py-3 bg-midnight-700 rounded-lg hover:bg-midnight-600 border border-midnight-600 hover:border-neon-blue transition-all text-center">
+                            <div class="text-2xl mb-1">🏥</div>
+                            <div class="text-xs">Orthanc</div>
+                        </a>
+                        <a :href="orthancWebUrl + '/ohif/'" target="_blank"
+                           class="px-4 py-3 bg-midnight-700 rounded-lg hover:bg-midnight-600 border border-midnight-600 hover:border-neon-purple transition-all text-center">
+                            <div class="text-2xl mb-1">🖼️</div>
+                            <div class="text-xs">OHIF Viewer</div>
+                        </a>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column: Recent Studies -->
+            <div class="lg:col-span-2">
+                <section class="bg-midnight-800 rounded-xl border border-midnight-600 overflow-hidden">
+                    <div class="px-5 py-4 border-b border-midnight-600 flex justify-between items-center">
+                        <h2 class="font-semibold flex items-center gap-2">
+                            <span class="text-xl">📋</span> Recent Studies
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            <input type="text" x-model="searchQuery" @input.debounce.300ms="searchStudies()"
+                                   placeholder="Search..."
+                                   class="text-sm bg-midnight-700 border border-midnight-600 rounded-lg px-3 py-1.5 w-48 focus:border-neon-blue focus:outline-none transition-colors">
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="text-slate-500 text-xs uppercase bg-midnight-700/50">
+                                <tr>
+                                    <th class="px-5 py-3 text-left">Status</th>
+                                    <th class="px-5 py-3 text-left">Patient</th>
+                                    <th class="px-5 py-3 text-left">Study</th>
+                                    <th class="px-5 py-3 text-left">Date</th>
+                                    <th class="px-5 py-3 text-left">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-midnight-700">
+                                <template x-for="study in recentStudies" :key="study.id">
+                                    <tr class="hover:bg-midnight-700/30 transition-colors">
+                                        <td class="px-5 py-3">
+                                            <span x-text="study.routingStatus === 'success' ? '✅' : 
+                                                         study.routingStatus === 'pending' ? '⏳' :
+                                                         study.routingStatus === 'failed' ? '❌' : '—'"></span>
+                                        </td>
+                                        <td class="px-5 py-3 font-mono" x-text="study.patientName"></td>
+                                        <td class="px-5 py-3 text-slate-400 max-w-[200px] truncate" x-text="study.description || '—'"></td>
+                                        <td class="px-5 py-3 text-slate-500 font-mono text-xs" x-text="study.studyDate"></td>
+                                        <td class="px-5 py-3">
+                                            <div class="flex gap-2">
+                                                <button @click="viewStudy(study.id)"
+                                                        class="text-xs px-2 py-1 bg-midnight-600 rounded hover:bg-neon-blue hover:text-midnight-900 transition-all">
+                                                    View
+                                                </button>
+                                                <a :href="orthancWebUrl + '/ohif/viewer?StudyInstanceUIDs=' + study.studyUid" 
+                                                   target="_blank"
+                                                   class="text-xs px-2 py-1 bg-midnight-600 rounded hover:bg-neon-purple hover:text-white transition-all">
+                                                    OHIF
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div x-show="recentStudies.length === 0" class="px-5 py-12 text-center text-slate-500">
+                        <div class="text-4xl mb-2">📭</div>
+                        No studies found
+                    </div>
+                    
+                    <div class="px-5 py-3 border-t border-midnight-700 text-xs text-slate-500">
+                        Showing <span x-text="recentStudies.length"></span> of <span x-text="stats.studies || 0"></span> studies
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Pipeline Funnel Section -->
+        <section class="mt-6 bg-midnight-800 rounded-xl border border-midnight-600 overflow-hidden">
+            <div class="px-5 py-4 border-b border-midnight-600">
+                <h2 class="font-semibold flex items-center gap-2">
+                    <span class="text-xl">📊</span> AI Processing Pipeline (Last 24h)
+                </h2>
+            </div>
+            <div class="p-5">
+                <!-- Funnel Visualization -->
+                <div x-show="funnel && funnel.total_studies > 0" class="mb-6">
+                    <!-- Summary Cards -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-midnight-700 border border-midnight-600 rounded-lg p-4 text-center">
+                            <div class="text-3xl font-bold text-white" x-text="funnel?.total_studies || 0"></div>
+                            <div class="text-xs text-slate-400 mt-1 uppercase tracking-wide">Studies Received</div>
+                        </div>
+                        <div class="bg-midnight-700 border border-midnight-600 rounded-lg p-4 text-center">
+                            <div class="text-3xl font-bold text-white" x-text="funnel?.pipeline?.[2]?.count || 0"></div>
+                            <div class="text-xs text-slate-400 mt-1 uppercase tracking-wide">AI Results Back</div>
+                        </div>
+                        <div class="bg-midnight-700 border border-midnight-600 rounded-lg p-4 text-center">
+                            <div class="text-3xl font-bold text-emerald-400" x-text="funnel?.pipeline?.[3]?.count || 0"></div>
+                            <div class="text-xs text-slate-400 mt-1 uppercase tracking-wide">Fully Routed</div>
+                        </div>
+                        <div class="bg-midnight-700 border border-midnight-600 rounded-lg p-4 text-center">
+                            <div class="text-3xl font-bold"
+                                 :class="(funnel?.summary?.overall_success_rate || 0) >= 90 ? 'text-emerald-400' : 
+                                         (funnel?.summary?.overall_success_rate || 0) >= 50 ? 'text-amber-400' : 'text-red-400'"
+                                 x-text="(funnel?.summary?.overall_success_rate || 0) + '%'"></div>
+                            <div class="text-xs text-slate-400 mt-1 uppercase tracking-wide">Success Rate</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Main Pipeline (hierarchical) -->
+                    <div x-show="funnel?.total_studies > 0" class="space-y-3">
+                        <template x-for="(stage, idx) in funnel?.pipeline || []" :key="stage.name">
+                            <div>
+                                <!-- Main stage bar -->
+                                <div class="flex items-center gap-3">
+                                    <div class="w-40 text-sm text-slate-300 text-right font-medium" x-text="stage.name"></div>
+                                    <div class="flex-1 relative">
+                                        <div class="h-7 rounded bg-slate-800/50 border border-slate-700/50 overflow-hidden">
+                                            <div class="h-full transition-all duration-500"
+                                                 :style="'width: ' + (stage.count > 0 ? stage.percent : 0) + '%'"
+                                                 :class="stage.name === 'Routed to Destinations' ? 'bg-emerald-600' : 'bg-slate-500'">
+                                            </div>
+                                        </div>
+                                        <div class="absolute inset-0 flex items-center justify-center text-xs font-medium text-white">
+                                            <span x-text="stage.count"></span>
+                                            <span class="text-slate-400 ml-1" x-text="'(' + stage.percent + '%)'"></span>
+                                        </div>
+                                    </div>
+                                    <div class="w-28 text-xs">
+                                        <span x-show="stage.failed" class="text-red-400" x-text="'−' + stage.failed + ' failed'"></span>
+                                        <span x-show="stage.waiting" class="text-amber-400" x-text="stage.waiting + ' waiting'"></span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Child destinations (indented) -->
+                                <template x-if="stage.children">
+                                    <div class="ml-44 mt-2 space-y-1 border-l-2 border-slate-700 pl-4">
+                                        <template x-for="child in stage.children" :key="child.name">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-20 text-xs text-slate-500 text-right" x-text="child.name"></div>
+                                                <div class="flex-1 relative">
+                                                    <div class="h-5 rounded bg-slate-800/30 border border-slate-700/30 overflow-hidden">
+                                                        <div class="h-full bg-slate-600 transition-all duration-500"
+                                                             :style="'width: ' + child.percent + '%'">
+                                                        </div>
+                                                    </div>
+                                                    <div class="absolute inset-0 flex items-center justify-center text-xs text-slate-300">
+                                                        <span x-text="child.count"></span>
+                                                        <span class="text-slate-500 ml-1" x-text="'(' + child.percent + '%)'"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="w-20 text-xs">
+                                                    <span x-show="child.failed" class="text-red-400" x-text="'−' + child.failed"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                    
+                    <!-- Drop-off Summary -->
+                    <div x-show="funnel?.summary?.drop_off && (funnel.summary.drop_off.mercure_send || funnel.summary.drop_off.ai_no_response || funnel.summary.drop_off.routing_failed)" 
+                         class="mt-4 p-3 bg-midnight-700 border border-midnight-600 rounded-lg">
+                        <div class="text-xs text-slate-400 mb-2">Drop-off Points</div>
+                        <div class="flex flex-wrap gap-4 text-xs">
+                            <span x-show="funnel?.summary?.drop_off?.mercure_send" class="text-red-400">
+                                MERCURE send failed: <span x-text="funnel?.summary?.drop_off?.mercure_send"></span>
+                            </span>
+                            <span x-show="funnel?.summary?.drop_off?.ai_no_response" class="text-amber-400">
+                                Awaiting AI response: <span x-text="funnel?.summary?.drop_off?.ai_no_response"></span>
+                            </span>
+                            <span x-show="funnel?.summary?.drop_off?.routing_failed" class="text-red-400">
+                                Routing failed: <span x-text="funnel?.summary?.drop_off?.routing_failed"></span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div x-show="!funnel || funnel?.total_studies === 0" class="text-center text-slate-500 py-8">
+                    <div class="text-4xl mb-2">📊</div>
+                    No studies processed in the last 24 hours. Upload a bone length study to see the pipeline.
+                </div>
+            </div>
+        </section>
+
+        <!-- Pipeline Trends Section -->
+        <section class="mt-6 bg-midnight-800 rounded-xl border border-midnight-600 overflow-hidden">
+            <div class="px-5 py-4 border-b border-midnight-600 flex justify-between items-center">
+                <h2 class="font-semibold flex items-center gap-2">
+                    <span class="text-xl">📈</span> Pipeline Trends
+                </h2>
+                <select x-model="trendHours" @change="loadTrends()" 
+                        class="bg-midnight-700 border border-midnight-600 rounded px-2 py-1 text-sm">
+                    <option value="24">Last 24h</option>
+                    <option value="72">Last 3 days</option>
+                    <option value="168">Last 7 days</option>
+                </select>
+            </div>
+            <div class="p-5">
+                <div x-show="trendData.length > 0" class="h-64">
+                    <canvas id="trendsChart"></canvas>
+                </div>
+                <div x-show="trendData.length === 0" class="text-center text-slate-500 py-8">
+                    <div class="text-4xl mb-2">📈</div>
+                    No trend data available. Process some studies to see trends over time.
+                </div>
+            </div>
+        </section>
+        
+        <!-- Recent Workflows Section -->
+        <section class="mt-6 bg-midnight-800 rounded-xl border border-midnight-600 overflow-hidden">
+            <div class="px-5 py-4 border-b border-midnight-600">
+                <h2 class="font-semibold flex items-center gap-2">
+                    <span class="text-xl">🔄</span> Recent Studies Pipeline
+                </h2>
+            </div>
+            <div class="divide-y divide-midnight-700">
+                <template x-for="w in recentWorkflows" :key="w.study_id">
+                    <div class="px-5 py-3">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <span class="font-mono text-xs text-slate-500" x-text="w.study_id.substring(0, 8)"></span>
+                                <span class="ml-2 text-sm" x-text="w.patient_name || 'Unknown'"></span>
+                            </div>
+                            <span class="text-xs text-slate-500" x-text="w.created_at ? new Date(w.created_at).toLocaleString() : ''"></span>
+                        </div>
+                        <!-- Pipeline Status -->
+                        <div class="flex items-center gap-1 text-xs flex-wrap">
+                            <!-- MERCURE -->
+                            <div class="flex items-center gap-1 px-2 py-1 rounded cursor-pointer hover:ring-1 hover:ring-neon-purple/50"
+                                 :class="w.stages?.mercure?.status === 'success' ? 'bg-neon-green/20 text-neon-green' : 
+                                         w.stages?.mercure?.status === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
+                                         'bg-slate-700 text-slate-400'"
+                                 @click="mercureStatus.available && viewMercureStatus(w)"
+                                 :title="mercureStatus.available ? 'Click to view Mercure details' : 'Mercure not configured'">
+                                <span>📤</span> MERCURE
+                                <span x-show="mercureStatus.available && w.stages?.mercure?.status === 'success'" class="text-neon-purple">🔍</span>
+                            </div>
+                            <span class="text-slate-600">→</span>
+                            <!-- AI Results -->
+                            <div class="flex items-center gap-1 px-2 py-1 rounded"
+                                 :class="w.stages?.ai_results?.status === 'received' ? 'bg-neon-blue/20 text-neon-blue' : 
+                                         'bg-slate-700 text-slate-400'">
+                                <span>🤖</span> AI
+                                <span x-text="w.stages?.ai_results?.status === 'received' ? '✓' : '⏳'"></span>
+                            </div>
+                            <span class="text-slate-600">→</span>
+                            <!-- LPCH -->
+                            <div class="flex items-center gap-1 px-2 py-1 rounded"
+                                 :class="w.stages?.lpch?.status === 'success' ? 'bg-neon-green/20 text-neon-green' : 
+                                         w.stages?.lpch?.status === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
+                                         'bg-slate-700 text-slate-400'">
+                                LPCH
+                                <span x-text="w.stages?.lpch?.status === 'success' ? '✓' : w.stages?.lpch?.status === 'failed' ? '✗' : '—'"></span>
+                            </div>
+                            <!-- MODLINK -->
+                            <div class="flex items-center gap-1 px-2 py-1 rounded"
+                                 :class="w.stages?.modlink?.status === 'success' ? 'bg-neon-green/20 text-neon-green' : 
+                                         w.stages?.modlink?.status === 'failed' ? 'bg-neon-red/20 text-neon-red' : 
+                                         'bg-slate-700 text-slate-400'">
+                                MODLINK
+                                <span x-text="w.stages?.modlink?.status === 'success' ? '✓' : w.stages?.modlink?.status === 'failed' ? '✗' : '—'"></span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="recentWorkflows.length === 0" class="px-5 py-8 text-center text-slate-500">
+                    No recent workflows
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Study Detail Modal -->
+    <div x-show="selectedStudy" x-cloak
+         class="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
+         @click.self="selectedStudy = null"
+         x-transition>
+        <div class="bg-midnight-800 rounded-xl border border-midnight-600 p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-start mb-6">
+                <h3 class="text-xl font-semibold">Study Details</h3>
+                <button @click="selectedStudy = null" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <template x-if="selectedStudy">
+                <div class="space-y-6">
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div class="bg-midnight-700 rounded-lg p-3">
+                            <div class="text-slate-500 text-xs mb-1">Patient Name</div>
+                            <div class="font-mono" x-text="selectedStudy.patientName"></div>
+                        </div>
+                        <div class="bg-midnight-700 rounded-lg p-3">
+                            <div class="text-slate-500 text-xs mb-1">Patient ID</div>
+                            <div class="font-mono" x-text="selectedStudy.patientId"></div>
+                        </div>
+                        <div class="bg-midnight-700 rounded-lg p-3">
+                            <div class="text-slate-500 text-xs mb-1">Study Date</div>
+                            <div class="font-mono" x-text="selectedStudy.studyDate"></div>
+                        </div>
+                        <div class="bg-midnight-700 rounded-lg p-3">
+                            <div class="text-slate-500 text-xs mb-1">Description</div>
+                            <div x-text="selectedStudy.description || '—'"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-midnight-700 rounded-lg p-3">
+                        <div class="text-slate-500 text-xs mb-2">Study Instance UID</div>
+                        <div class="font-mono text-xs break-all" x-text="selectedStudy.studyUid"></div>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <a :href="orthancWebUrl + '/app/explorer.html#study?uuid=' + selectedStudy.id"
+                           target="_blank"
+                           class="flex-1 px-4 py-3 bg-midnight-700 rounded-lg hover:bg-neon-blue hover:text-midnight-900 transition-all text-center">
+                            Open in Orthanc
+                        </a>
+                        <a :href="orthancWebUrl + '/ohif/viewer?StudyInstanceUIDs=' + selectedStudy.studyUid"
+                           target="_blank"
+                           class="flex-1 px-4 py-3 bg-midnight-700 rounded-lg hover:bg-neon-purple hover:text-white transition-all text-center">
+                            Open in OHIF
+                        </a>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Stuck Studies Modal -->
+    <div x-show="showStuckModal" x-cloak
+         class="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
+         @click.self="showStuckModal = false"
+         x-transition>
+        <div class="bg-midnight-800 rounded-xl border-2 border-neon-red p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-start mb-6">
+                <h3 class="text-xl font-semibold text-neon-red flex items-center gap-2">
+                    🚨 Stuck Studies
+                </h3>
+                <button @click="showStuckModal = false" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            
+            <div class="space-y-3">
+                <template x-for="item in stuck" :key="item.study_id + item.destination">
+                    <div class="bg-midnight-700 rounded-lg p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="font-mono font-medium" x-text="item.patient_name || item.study_id"></div>
+                                <div class="text-sm text-slate-400 mt-1">
+                                    → <span class="text-neon-blue" x-text="item.destination"></span> · 
+                                    <span x-text="item.attempt_count"></span> attempts
+                                </div>
+                                <div class="text-sm text-neon-red mt-2" x-text="item.last_error"></div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button @click="retryStudy(item.study_id)"
+                                        class="px-3 py-1.5 bg-neon-blue text-midnight-900 rounded hover:bg-neon-blue/80 text-sm font-medium">
+                                    Retry
+                                </button>
+                                <button @click="skipStudy(item.study_id)"
+                                        class="px-3 py-1.5 bg-midnight-600 rounded hover:bg-midnight-500 text-sm">
+                                    Skip
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            
+            <div class="mt-6 pt-4 border-t border-midnight-600 flex justify-end gap-3">
+                <button @click="showStuckModal = false"
+                        class="px-4 py-2 bg-midnight-700 rounded-lg hover:bg-midnight-600">
+                    Close
+                </button>
+                <button @click="retryAllStuck()"
+                        class="px-4 py-2 bg-neon-blue text-midnight-900 rounded-lg hover:bg-neon-blue/80 font-medium">
+                    Retry All
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="fixed bottom-6 right-6 space-y-3 z-50">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div class="px-5 py-3 rounded-lg shadow-xl border backdrop-blur-sm"
+                 :class="{
+                     'bg-neon-green/20 border-neon-green text-neon-green': toast.type === 'success',
+                     'bg-neon-red/20 border-neon-red text-neon-red': toast.type === 'error',
+                     'bg-neon-blue/20 border-neon-blue text-neon-blue': toast.type === 'info'
+                 }"
+                 x-text="toast.message"
+                 x-show="toast.visible"
+                 x-transition>
+            </div>
+        </template>
+    </div>
+
+    <!-- Add/Edit Destination Modal -->
+    <div x-show="showDestinationModal" x-cloak
+         class="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
+         @click.self="closeDestinationModal()"
+         x-transition>
+        <div class="bg-midnight-800 rounded-xl border border-midnight-600 p-6 max-w-md w-full">
+            <div class="flex justify-between items-start mb-6">
+                <h3 class="text-xl font-semibold" x-text="editingDestination ? 'Edit Destination' : 'Add DICOM Destination'"></h3>
+                <button @click="closeDestinationModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            
+            <form @submit.prevent="saveDestination()" class="space-y-4">
+                <!-- Name -->
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Name <span class="text-neon-red">*</span></label>
+                    <input type="text" 
+                           x-model="destinationForm.name"
+                           :disabled="editingDestination"
+                           :class="editingDestination && 'opacity-50 cursor-not-allowed'"
+                           class="w-full bg-midnight-700 border border-midnight-600 rounded-lg px-4 py-2 focus:border-neon-blue focus:outline-none font-mono"
+                           placeholder="MERCURE"
+                           required>
+                    <p class="text-xs text-slate-500 mt-1">Unique identifier (no spaces)</p>
+                </div>
+                
+                <!-- AE Title -->
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">AE Title <span class="text-neon-red">*</span></label>
+                    <input type="text" 
+                           x-model="destinationForm.aet"
+                           class="w-full bg-midnight-700 border border-midnight-600 rounded-lg px-4 py-2 focus:border-neon-blue focus:outline-none font-mono uppercase"
+                           placeholder="MERCURE_AET"
+                           maxlength="16"
+                           required>
+                    <p class="text-xs text-slate-500 mt-1">Max 16 characters, uppercase recommended</p>
+                </div>
+                
+                <!-- Host -->
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Host <span class="text-neon-red">*</span></label>
+                    <input type="text" 
+                           x-model="destinationForm.host"
+                           class="w-full bg-midnight-700 border border-midnight-600 rounded-lg px-4 py-2 focus:border-neon-blue focus:outline-none font-mono"
+                           placeholder="192.168.1.100 or hostname.local"
+                           required>
+                </div>
+                
+                <!-- Port -->
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Port <span class="text-neon-red">*</span></label>
+                    <input type="number" 
+                           x-model.number="destinationForm.port"
+                           class="w-full bg-midnight-700 border border-midnight-600 rounded-lg px-4 py-2 focus:border-neon-blue focus:outline-none font-mono"
+                           placeholder="4242"
+                           min="1"
+                           max="65535"
+                           required>
+                </div>
+                
+                <!-- Advanced Options Toggle -->
+                <div>
+                    <button type="button" 
+                            @click="showAdvancedOptions = !showAdvancedOptions"
+                            class="text-sm text-slate-400 hover:text-white flex items-center gap-1">
+                        <svg class="w-4 h-4 transition-transform" :class="showAdvancedOptions && 'rotate-90'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                        Advanced Options
+                    </button>
+                </div>
+                
+                <!-- Advanced Options -->
+                <div x-show="showAdvancedOptions" x-transition class="space-y-4 pt-2 border-t border-midnight-700">
+                    <!-- Manufacturer -->
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Manufacturer</label>
+                        <select x-model="destinationForm.manufacturer"
+                                class="w-full bg-midnight-700 border border-midnight-600 rounded-lg px-4 py-2 focus:border-neon-blue focus:outline-none">
+                            <option value="">Generic</option>
+                            <option value="Generic">Generic</option>
+                            <option value="GenericNoWildcardInDates">Generic (No Wildcard Dates)</option>
+                            <option value="StoreScp">StoreSCP</option>
+                            <option value="ClearCanvas">ClearCanvas</option>
+                            <option value="Dcm4Chee">Dcm4Chee</option>
+                            <option value="SyngoVia">Syngo.via</option>
+                            <option value="AgfaImpax">Agfa IMPAX</option>
+                            <option value="EFilm">eFilm</option>
+                            <option value="Vitrea">Vitrea</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Allow Echo/Store/Find/Get/Move checkboxes -->
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Allowed Operations</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" x-model="destinationForm.allowEcho" class="rounded bg-midnight-600 border-midnight-500">
+                                <span>C-ECHO</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" x-model="destinationForm.allowStore" class="rounded bg-midnight-600 border-midnight-500">
+                                <span>C-STORE</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" x-model="destinationForm.allowFind" class="rounded bg-midnight-600 border-midnight-500">
+                                <span>C-FIND</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" x-model="destinationForm.allowGet" class="rounded bg-midnight-600 border-midnight-500">
+                                <span>C-GET</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" x-model="destinationForm.allowMove" class="rounded bg-midnight-600 border-midnight-500">
+                                <span>C-MOVE</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Error Message -->
+                <div x-show="destinationError" class="text-neon-red text-sm bg-neon-red/10 border border-neon-red/30 rounded-lg px-4 py-2">
+                    <span x-text="destinationError"></span>
+                </div>
+                
+                <!-- Actions -->
+                <div class="flex gap-3 pt-4">
+                    <button type="button" 
+                            @click="closeDestinationModal()"
+                            class="flex-1 px-4 py-2 bg-midnight-700 rounded-lg hover:bg-midnight-600 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            x-show="editingDestination"
+                            @click="confirmDeleteDestination()"
+                            class="px-4 py-2 bg-neon-red/20 text-neon-red border border-neon-red/30 rounded-lg hover:bg-neon-red/30 transition-colors">
+                        Delete
+                    </button>
+                    <button type="submit"
+                            :disabled="savingDestination"
+                            class="flex-1 px-4 py-2 bg-neon-blue text-midnight-900 rounded-lg hover:bg-neon-blue/80 transition-colors font-medium disabled:opacity-50">
+                        <span x-show="!savingDestination" x-text="editingDestination ? 'Update' : 'Add'"></span>
+                        <span x-show="savingDestination">Saving...</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div x-show="showDeleteConfirm" x-cloak
+         class="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[60]"
+         @click.self="showDeleteConfirm = false"
+         x-transition>
+        <div class="bg-midnight-800 rounded-xl border-2 border-neon-red p-6 max-w-sm w-full">
+            <div class="text-center">
+                <div class="text-5xl mb-4">⚠️</div>
+                <h3 class="text-xl font-semibold mb-2">Delete Destination?</h3>
+                <p class="text-slate-400 mb-6">
+                    Are you sure you want to delete <span class="font-mono text-neon-red" x-text="destinationForm.name"></span>?
+                    <br><br>
+                    This will remove the modality from Orthanc. Any routing rules using this destination will fail.
+                </p>
+                <div class="flex gap-3">
+                    <button @click="showDeleteConfirm = false"
+                            class="flex-1 px-4 py-2 bg-midnight-700 rounded-lg hover:bg-midnight-600">
+                        Cancel
+                    </button>
+                    <button @click="deleteDestination()"
+                            class="flex-1 px-4 py-2 bg-neon-red text-white rounded-lg hover:bg-neon-red/80 font-medium">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-12 py-6 border-t border-midnight-700">
+        <div class="container mx-auto px-6 text-center text-slate-600 text-sm">
+            <div>Orthanc Operator Dashboard</div>
+            <div class="mt-1 font-mono text-xs">
+                Ports: 8040 (Dashboard) · 8041 (Orthanc) · 8042 (OHIF) · 4242 (DICOM)
+            </div>
+        </div>
+    </footer>
+</div>
+
+<script>
+// Configuration - can be overridden by setting window.RADWATCH_CONFIG before this script
+const CONFIG = window.RADWATCH_CONFIG || {
+    // Orthanc server (external)
+    orthancUrl: 'http://' + window.location.hostname + ':8042',
+    orthancWebUrl: 'http://' + window.location.hostname + ':8042',
+    // OHIF viewer (usually served by Orthanc)
+    ohifUrl: 'http://' + window.location.hostname + ':8042/ohif/',
+    // Grafana (for metrics)
+    grafanaUrl: 'http://' + window.location.hostname + ':3000',
+    // Workflow API (proxied through nginx at /api/)
+    apiBaseUrl: '/api'
+};
+
+function dashboard() {
+    return {
+        // Config from global CONFIG
+        orthancUrl: CONFIG.orthancUrl,
+        orthancWebUrl: CONFIG.orthancWebUrl,
+        ohifUrl: CONFIG.ohifUrl,
+        grafanaUrl: CONFIG.grafanaUrl,
+        apiBaseUrl: CONFIG.apiBaseUrl,
+        
+        // State
+        loading: false,
+        lastUpdate: '—',
+        services: { healthy: 0, total: 4 },
+        stats: {},
+        destinations: [],
+        recentStudies: [],
+        stuck: [],
+        routingStats: [],
+        funnel: null,
+        recentWorkflows: [],
+        trendData: [],
+        trendHours: 24,
+        trendsChart: null,
+        searchQuery: '',
+        selectedStudy: null,
+        showStuckModal: false,
+        showAbout: false,
+        toasts: [],
+        
+        // Mercure integration
+        mercureStatus: { available: false, message: 'Checking...' },
+        mercureStudyDetail: null,
+        showMercureModal: false,
+        
+        // Destination management
+        showDestinationModal: false,
+        showDeleteConfirm: false,
+        showAdvancedOptions: false,
+        editingDestination: null,
+        savingDestination: false,
+        destinationError: '',
+        destinationForm: {
+            name: '',
+            aet: '',
+            host: '',
+            port: 4242,
+            manufacturer: '',
+            allowEcho: true,
+            allowStore: true,
+            allowFind: true,
+            allowGet: true,
+            allowMove: true,
+        },
+        
+        async init() {
+            // Load saved test results from localStorage
+            this.loadSavedStatuses();
+            
+            // Give services a moment to be ready on page load
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Check Mercure integration status (non-blocking)
+            this.checkMercureStatus().catch(e => console.warn('Mercure check failed:', e));
+            
+            // Initial refresh with retry on failure
+            try {
+                await this.refresh();
+            } catch (e) {
+                console.warn('Initial refresh failed, retrying in 2s...', e);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await this.refresh();
+            }
+            
+            // Auto-refresh every 30 seconds
+            setInterval(() => this.refresh(), 30000);
+        },
+        
+        // LocalStorage persistence for test results
+        loadSavedStatuses() {
+            try {
+                const saved = localStorage.getItem('orthanc-destination-statuses');
+                if (saved) {
+                    this._savedStatuses = JSON.parse(saved);
+                } else {
+                    this._savedStatuses = {};
+                }
+            } catch (e) {
+                console.error('Failed to load saved statuses:', e);
+                this._savedStatuses = {};
+            }
+        },
+        
+        saveStatuses() {
+            try {
+                const toSave = {};
+                for (const dest of this.destinations) {
+                    if (dest.status !== 'unknown') {
+                        toSave[dest.name] = {
+                            status: dest.status,
+                            responseTime: dest.responseTime,
+                            lastTested: dest.lastTested
+                        };
+                    }
+                }
+                localStorage.setItem('orthanc-destination-statuses', JSON.stringify(toSave));
+                this._savedStatuses = toSave;
+            } catch (e) {
+                console.error('Failed to save statuses:', e);
+            }
+        },
+        
+        getSavedStatus(name) {
+            return this._savedStatuses?.[name] || null;
+        },
+        
+        clearSavedStatuses() {
+            localStorage.removeItem('orthanc-destination-statuses');
+            this._savedStatuses = {};
+            // Reset all destinations to unknown
+            for (const dest of this.destinations) {
+                dest.status = 'unknown';
+                dest.responseTime = null;
+                dest.lastTested = null;
+            }
+            this.destinations = [...this.destinations];
+            this.toast('Saved test results cleared', 'info');
+        },
+        
+        async refresh() {
+            this.loading = true;
+            this.lastUpdate = new Date().toLocaleTimeString();
+            
+            await Promise.allSettled([
+                this.loadStats(),
+                this.loadDestinations(),
+                this.loadRecentStudies(),
+                this.loadStuck(),
+                this.loadRoutingStats(),
+                this.loadTrends(),
+            ]);
+            
+            this.loading = false;
+        },
+        
+        async api(path, options = {}) {
+            try {
+                const response = await fetch(this.orthancUrl + path, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers,
+                    },
+                    credentials: 'include',
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (e) {
+                console.error(`API ${path}:`, e);
+                throw e;
+            }
+        },
+        
+        async loadStats() {
+            try {
+                const [stats, system] = await Promise.all([
+                    this.api('/statistics'),
+                    this.api('/system'),
+                ]);
+                
+                this.stats = {
+                    patients: stats.CountPatients,
+                    studies: stats.CountStudies,
+                    series: stats.CountSeries,
+                    instances: stats.CountInstances,
+                    diskSize: stats.TotalDiskSizeMB * 1024 * 1024,
+                };
+                
+                // If we got here, services are running
+                this.services = { healthy: 4, total: 4 };
+            } catch (e) {
+                console.warn('Failed to load stats:', e);
+                // Don't reset to 0 if we had data before - just mark as degraded
+                if (this.stats.studies !== undefined) {
+                    this.services = { healthy: 3, total: 4 };  // Degraded, not down
+                } else {
+                    this.services = { healthy: 0, total: 4 };
+                }
+            }
+        },
+        
+        async loadDestinations() {
+            try {
+                const names = await this.api('/modalities');
+                
+                // Preserve existing statuses and timestamps (from memory first, then localStorage)
+                const existingStatuses = {};
+                for (const dest of this.destinations) {
+                    existingStatuses[dest.name] = { 
+                        status: dest.status, 
+                        responseTime: dest.responseTime,
+                        lastTested: dest.lastTested
+                    };
+                }
+                // Also check localStorage for any we don't have in memory
+                for (const [name, saved] of Object.entries(this._savedStatuses || {})) {
+                    if (!existingStatuses[name] || existingStatuses[name].status === 'unknown') {
+                        existingStatuses[name] = saved;
+                    }
+                }
+                
+                // Build all destinations first
+                const newDestinations = [];
+                for (const name of names) {
+                    try {
+                        const config = await this.api(`/modalities/${name}/configuration`);
+                        
+                        // Parse config (can be array or object format)
+                        const isArray = Array.isArray(config);
+                        const aet = isArray ? config[0] : config.AET;
+                        const host = isArray ? config[1] : config.Host;
+                        const port = isArray ? config[2] : config.Port;
+                        const manufacturer = isArray ? (config[3] || '') : (config.Manufacturer || '');
+                        
+                        // Restore previous status if exists
+                        const existing = existingStatuses[name];
+                        
+                        newDestinations.push({
+                            name,
+                            aet,
+                            host,
+                            port,
+                            manufacturer,
+                            allowEcho: isArray || config.AllowEcho !== false,
+                            allowStore: isArray || config.AllowStore !== false,
+                            allowFind: isArray || config.AllowFind !== false,
+                            allowGet: isArray || config.AllowGet !== false,
+                            allowMove: isArray || config.AllowMove !== false,
+                            status: existing?.status || 'unknown',
+                            responseTime: existing?.responseTime || null,
+                            lastTested: existing?.lastTested || null,
+                        });
+                    } catch (e) {
+                        console.error(`Failed to load destination ${name}:`, e);
+                    }
+                }
+                
+                // Update all at once for better reactivity
+                this.destinations = newDestinations;
+                
+            } catch (e) {
+                console.error('Failed to load destinations:', e);
+            }
+        },
+        
+        async testAllDestinations() {
+            const toastId = this.toast('Testing all destinations...', 'info', true);
+            let online = 0, offline = 0;
+            const now = Date.now();
+            
+            for (const dest of this.destinations) {
+                try {
+                    const start = Date.now();
+                    const response = await fetch(this.orthancUrl + `/modalities/${dest.name}/echo`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                    });
+                    if (response.ok) {
+                        const ms = Date.now() - start;
+                        dest.responseTime = ms;
+                        dest.status = ms > 1000 ? 'slow' : 'online';
+                        dest.lastTested = now;
+                        online++;
+                    } else {
+                        dest.status = 'offline';
+                        dest.lastTested = now;
+                        offline++;
+                    }
+                } catch {
+                    dest.status = 'offline';
+                    dest.lastTested = now;
+                    offline++;
+                }
+                // Force reactivity update after each test
+                this.destinations = [...this.destinations];
+            }
+            
+            // Save to localStorage
+            this.saveStatuses();
+            
+            // Dismiss "testing" toast and show result
+            this.dismissToast(toastId);
+            this.toast(`Testing complete: ${online} online, ${offline} offline`, online > 0 ? 'success' : 'error');
+        },
+        
+        async loadRecentStudies() {
+            try {
+                const studyIds = await this.api('/studies');
+                const recent = studyIds.slice(0, 15);
+                
+                // Build array first, then assign all at once
+                const newStudies = [];
+                for (const id of recent) {
+                    try {
+                        const study = await this.api(`/studies/${id}`);
+                        newStudies.push({
+                            id,
+                            patientName: study.PatientMainDicomTags?.PatientName || 'Unknown',
+                            patientId: study.PatientMainDicomTags?.PatientID || '',
+                            description: study.MainDicomTags?.StudyDescription || '',
+                            studyDate: study.MainDicomTags?.StudyDate || '',
+                            studyUid: study.MainDicomTags?.StudyInstanceUID,
+                            routingStatus: 'success', // TODO: Get from routing_state
+                        });
+                    } catch (e) {
+                        console.error(`Failed to load study ${id}:`, e);
+                    }
+                }
+                // Assign all at once for proper reactivity
+                this.recentStudies = newStudies;
+            } catch (e) {
+                console.error('Failed to load studies:', e);
+            }
+        },
+        
+        async loadStuck() {
+            // TODO: Query routing_state table via custom endpoint
+            // For now, this would need a backend endpoint
+            this.stuck = [];
+        },
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // MERCURE INTEGRATION
+        // ═══════════════════════════════════════════════════════════════════════
+        
+        async checkMercureStatus() {
+            try {
+                const response = await fetch('/api/mercure/status');
+                if (response.ok) {
+                    this.mercureStatus = await response.json();
+                } else {
+                    this.mercureStatus = { available: false, message: 'API error' };
+                }
+            } catch (e) {
+                this.mercureStatus = { available: false, message: 'Connection failed' };
+            }
+        },
+        
+        async getMercureStudyStatus(studyUid) {
+            if (!studyUid || !this.mercureStatus.available) {
+                this.toast('Mercure integration not available', 'warning');
+                return null;
+            }
+            
+            try {
+                const response = await fetch(`/api/mercure/study/${encodeURIComponent(studyUid)}`);
+                if (response.ok) {
+                    this.mercureStudyDetail = await response.json();
+                    this.showMercureModal = true;
+                    return this.mercureStudyDetail;
+                } else {
+                    const err = await response.json();
+                    this.toast(err.error || 'Failed to get Mercure status', 'error');
+                    return null;
+                }
+            } catch (e) {
+                this.toast('Failed to connect to Mercure API', 'error');
+                return null;
+            }
+        },
+        
+        async viewMercureStatus(workflow) {
+            // Get StudyInstanceUID from workflow
+            const studyUid = workflow.study_instance_uid || workflow.studyUid;
+            if (!studyUid) {
+                // Try to get from Orthanc if we only have study_id
+                try {
+                    const response = await fetch(`/api/workflows/${workflow.study_id}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.study_instance_uid) {
+                            return this.getMercureStudyStatus(data.study_instance_uid);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to get study UID:', e);
+                }
+                this.toast('Study UID not available', 'warning');
+                return;
+            }
+            return this.getMercureStudyStatus(studyUid);
+        },
+        
+        formatMercureDuration(seconds) {
+            if (!seconds) return '—';
+            if (seconds < 60) return `${Math.round(seconds)}s`;
+            if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+            return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+        },
+        
+        async loadRoutingStats() {
+            try {
+                // Fetch funnel data
+                const funnelResponse = await fetch('/api/funnel?hours=24');
+                if (funnelResponse.ok) {
+                    const data = await funnelResponse.json();
+                    if (data) this.funnel = data;
+                }
+                
+                // Fetch recent workflows
+                const workflowsResponse = await fetch('/api/workflows?hours=24&limit=20');
+                if (workflowsResponse.ok) {
+                    const data = await workflowsResponse.json();
+                    if (Array.isArray(data)) this.recentWorkflows = data;
+                }
+                
+                // Fetch per-destination stats (backward compat)
+                const destResponse = await fetch('/api/routing/stats?hours=24');
+                if (destResponse.ok) {
+                    const data = await destResponse.json();
+                    if (Array.isArray(data)) this.routingStats = data;
+                }
+            } catch (e) {
+                console.error('Failed to load routing stats:', e);
+                // Don't reset data on error - keep existing values
+            }
+        },
+
+        async loadTrends() {
+            try {
+                const interval = this.trendHours > 48 ? 'day' : 'hour';
+                const response = await fetch(`/api/funnel/timeseries?hours=${this.trendHours}&interval=${interval}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.trendData = data.data || [];
+                    this.renderTrendsChart();
+                }
+            } catch (e) {
+                console.error('Failed to load trends:', e);
+                this.trendData = [];
+            }
+        },
+
+        renderTrendsChart() {
+            const canvas = document.getElementById('trendsChart');
+            if (!canvas || this.trendData.length === 0) return;
+
+            // Destroy existing chart
+            if (this.trendsChart) {
+                this.trendsChart.destroy();
+            }
+
+            const labels = this.trendData.map(d => d.time_bucket);
+            
+            this.trendsChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Studies Received',
+                            data: this.trendData.map(d => d.studies_received),
+                            borderColor: '#64748b',
+                            backgroundColor: 'rgba(100, 116, 139, 0.1)',
+                            tension: 0.3,
+                            fill: false
+                        },
+                        {
+                            label: 'Sent to MERCURE',
+                            data: this.trendData.map(d => d.mercure_sent),
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            tension: 0.3,
+                            fill: false
+                        },
+                        {
+                            label: 'AI Results Back',
+                            data: this.trendData.map(d => d.ai_results),
+                            borderColor: '#06b6d4',
+                            backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                            tension: 0.3,
+                            fill: false
+                        },
+                        {
+                            label: 'Fully Complete',
+                            data: this.trendData.map(d => d.fully_complete),
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            tension: 0.3,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#94a3b8',
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#cbd5e1',
+                            borderColor: '#334155',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#334155' },
+                            ticks: { color: '#64748b', maxRotation: 45 }
+                        },
+                        y: {
+                            grid: { color: '#334155' },
+                            ticks: { color: '#64748b' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        },
+        
+        async testDestination(name) {
+            const toastId = this.toast(`Testing ${name}...`, 'info', true);
+            try {
+                const start = Date.now();
+                await this.api(`/modalities/${name}/echo`, { method: 'POST' });
+                const ms = Date.now() - start;
+                
+                // Dismiss "testing" toast and show result
+                this.dismissToast(toastId);
+                this.toast(`${name} is reachable (${ms}ms)`, 'success');
+                
+                // Update just this destination's status (not all)
+                const dest = this.destinations.find(d => d.name === name);
+                if (dest) {
+                    dest.status = ms > 1000 ? 'slow' : 'online';
+                    dest.responseTime = ms;
+                    dest.lastTested = Date.now();
+                    // Trigger reactivity and save
+                    this.destinations = [...this.destinations];
+                    this.saveStatuses();
+                }
+            } catch (e) {
+                // Dismiss "testing" toast and show error
+                this.dismissToast(toastId);
+                this.toast(`${name} is not reachable`, 'error');
+                
+                // Update status to offline
+                const dest = this.destinations.find(d => d.name === name);
+                if (dest) {
+                    dest.status = 'offline';
+                    dest.responseTime = null;
+                    dest.lastTested = Date.now();
+                    this.destinations = [...this.destinations];
+                    this.saveStatuses();
+                }
+            }
+        },
+        
+        async viewStudy(id) {
+            try {
+                const study = await this.api(`/studies/${id}`);
+                this.selectedStudy = {
+                    id,
+                    patientName: study.PatientMainDicomTags?.PatientName || 'Unknown',
+                    patientId: study.PatientMainDicomTags?.PatientID || '',
+                    studyDate: study.MainDicomTags?.StudyDate || '',
+                    description: study.MainDicomTags?.StudyDescription || '',
+                    studyUid: study.MainDicomTags?.StudyInstanceUID,
+                };
+            } catch (e) {
+                this.toast('Failed to load study details', 'error');
+            }
+        },
+        
+        async retryStudy(studyId) {
+            this.toast(`Retrying ${studyId}...`, 'info');
+            // TODO: Call backend to reset routing_state
+            await this.loadStuck();
+        },
+        
+        async skipStudy(studyId) {
+            this.toast(`Skipped ${studyId}`, 'success');
+            // TODO: Call backend to mark as skipped
+            await this.loadStuck();
+        },
+        
+        async retryAllStuck() {
+            this.toast('Retrying all stuck studies...', 'info');
+            // TODO: Call backend
+            await this.loadStuck();
+            this.showStuckModal = false;
+        },
+        
+        formatSize(bytes) {
+            if (!bytes) return '—';
+            const gb = bytes / (1024 * 1024 * 1024);
+            if (gb >= 1) return gb.toFixed(1) + ' GB';
+            const mb = bytes / (1024 * 1024);
+            return mb.toFixed(0) + ' MB';
+        },
+        
+        toast(message, type = 'info', persistent = false) {
+            const id = Date.now();
+            this.toasts.push({ id, message, type, visible: true });
+            if (!persistent) {
+                setTimeout(() => {
+                    const t = this.toasts.find(x => x.id === id);
+                    if (t) t.visible = false;
+                }, 3000);
+                setTimeout(() => {
+                    this.toasts = this.toasts.filter(x => x.id !== id);
+                }, 3500);
+            }
+            return id;
+        },
+        
+        dismissToast(id) {
+            const t = this.toasts.find(x => x.id === id);
+            if (t) t.visible = false;
+            setTimeout(() => {
+                this.toasts = this.toasts.filter(x => x.id !== id);
+            }, 300);
+        },
+        
+        formatTimeAgo(timestamp) {
+            if (!timestamp) return '';
+            const seconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (seconds < 60) return 'just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            return new Date(timestamp).toLocaleDateString();
+        },
+
+        
+        async searchStudies() {
+            if (!this.searchQuery) {
+                await this.loadRecentStudies();
+                return;
+            }
+            // TODO: Use Orthanc's /tools/find endpoint
+        },
+        
+        // ─────────────────────────────────────────────────────────────────
+        // DESTINATION MANAGEMENT
+        // ─────────────────────────────────────────────────────────────────
+        
+        resetDestinationForm() {
+            this.destinationForm = {
+                name: '',
+                aet: '',
+                host: '',
+                port: 4242,
+                manufacturer: '',
+                allowEcho: true,
+                allowStore: true,
+                allowFind: true,
+                allowGet: true,
+                allowMove: true,
+            };
+            this.destinationError = '';
+            this.showAdvancedOptions = false;
+        },
+        
+        openAddDestination() {
+            this.editingDestination = null;
+            this.resetDestinationForm();
+            this.showDestinationModal = true;
+        },
+        
+        openEditDestination(dest) {
+            this.editingDestination = dest.name;
+            this.destinationForm = {
+                name: dest.name,
+                aet: dest.aet || '',
+                host: dest.host || '',
+                port: dest.port || 4242,
+                manufacturer: dest.manufacturer || '',
+                allowEcho: dest.allowEcho !== false,
+                allowStore: dest.allowStore !== false,
+                allowFind: dest.allowFind !== false,
+                allowGet: dest.allowGet !== false,
+                allowMove: dest.allowMove !== false,
+            };
+            this.destinationError = '';
+            this.showDestinationModal = true;
+        },
+        
+        closeDestinationModal() {
+            this.showDestinationModal = false;
+            this.editingDestination = null;
+            this.resetDestinationForm();
+        },
+        
+        async saveDestination() {
+            this.destinationError = '';
+            this.savingDestination = true;
+            
+            // Validate
+            const { name, aet, host, port } = this.destinationForm;
+            if (!name || !aet || !host || !port) {
+                this.destinationError = 'All required fields must be filled';
+                this.savingDestination = false;
+                return;
+            }
+            
+            // Validate name (no spaces, alphanumeric + underscore)
+            if (!/^[a-zA-Z0-9_]+$/.test(name)) {
+                this.destinationError = 'Name must contain only letters, numbers, and underscores';
+                this.savingDestination = false;
+                return;
+            }
+            
+            // Validate AET (max 16 chars)
+            if (aet.length > 16) {
+                this.destinationError = 'AE Title must be 16 characters or less';
+                this.savingDestination = false;
+                return;
+            }
+            
+            // Validate port
+            if (port < 1 || port > 65535) {
+                this.destinationError = 'Port must be between 1 and 65535';
+                this.savingDestination = false;
+                return;
+            }
+            
+            try {
+                // Build the modality configuration
+                // Orthanc accepts modalities in a few formats, we'll use the object format
+                const config = {
+                    AET: aet.toUpperCase(),
+                    Host: host,
+                    Port: parseInt(port, 10),
+                    AllowEcho: this.destinationForm.allowEcho,
+                    AllowStore: this.destinationForm.allowStore,
+                    AllowFind: this.destinationForm.allowFind,
+                    AllowGet: this.destinationForm.allowGet,
+                    AllowMove: this.destinationForm.allowMove,
+                };
+                
+                if (this.destinationForm.manufacturer) {
+                    config.Manufacturer = this.destinationForm.manufacturer;
+                }
+                
+                // PUT to create or update the modality
+                await fetch(this.orthancUrl + '/modalities/' + name, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(config),
+                });
+                
+                this.toast(
+                    this.editingDestination 
+                        ? `Updated ${name}` 
+                        : `Added ${name}`,
+                    'success'
+                );
+                
+                this.closeDestinationModal();
+                await this.loadDestinations();
+                
+            } catch (e) {
+                console.error('Failed to save destination:', e);
+                this.destinationError = 'Failed to save: ' + (e.message || 'Unknown error');
+            } finally {
+                this.savingDestination = false;
+            }
+        },
+        
+        confirmDeleteDestination() {
+            this.showDeleteConfirm = true;
+        },
+        
+        async deleteDestination() {
+            const name = this.destinationForm.name;
+            
+            try {
+                await fetch(this.orthancUrl + '/modalities/' + name, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                });
+                
+                this.toast(`Deleted ${name}`, 'success');
+                this.showDeleteConfirm = false;
+                this.closeDestinationModal();
+                await this.loadDestinations();
+                
+            } catch (e) {
+                console.error('Failed to delete destination:', e);
+                this.toast('Failed to delete: ' + (e.message || 'Unknown error'), 'error');
+            }
+        },
+    };
+}
+</script>
+
+</body>
+</html>

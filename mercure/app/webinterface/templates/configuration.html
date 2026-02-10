@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration{% endblock %}
+
+{% block content %}
+<main role="main">
+    <div class="container">
+        <div class="columns">
+            <div class="column">
+                <h1 class="title">Configuration</h1>
+            </div>
+            <div class="column">
+                <div class="buttons is-right">
+                    <a class="button" href="/"><span class="icon"><i class="fas fa-arrow-left"></i></span><span>Back</span></a>
+                    {% if is_admin %}
+                    <a class="button" href="/configuration/edit"><span class="icon"><i class="fas fa-pencil-alt"></i></span><span>Edit</span></a>
+                    {% endif %}                
+                </div>
+            </div>
+        </div>
+        <div class="columns">
+            <div class="column is-full">
+                {% if config_edited>0 %}
+                <div class="notification is-success" style="margin-bottom: 1rem;">
+                    <i class="fas fa-check"></i>&nbsp;&nbsp;Configuration has been updated.
+                </div>
+                <div class="notification" style="margin-bottom: 40px;">
+                    <i class="fas fa-bolt"></i>&nbsp;&nbsp;Changes of DICOM connectivity settings require manual restart of the receiver service! Make sure to restart when the receiver is idle.
+                </div>
+                {% endif %}
+                <h5 class="title is-5 configtitle"><i class="fas fa-server has-text-success"></i>&nbsp;&nbsp;General
+                </h5>
+                <table class="table is-narrow is-hoverable is-fullwidth configtable">
+                    <col width="230px">
+                    <tr>
+                        <td>Appliance Name:</td>
+                        <td>{{config['appliance_name']}}</td>
+                    </tr>
+                    <tr>
+                        <td>mercure Version:</td>
+                        <td>{{mercure_version}}</td>
+                    </tr>
+                    <tr>
+                        <td>Operating System:</td>
+                        <td>{{os_string}}</td>
+                    </tr>
+                    <tr>
+                        <td>Process Runner:</td>
+                        <td>{{runtime}}</td>
+                    </tr>
+                    <tr>
+                        <td>Support Root Modules:</td>
+                        <td>{{config['support_root_modules']}}
+                            {% if config['support_root_modules']==True %}
+                            <a href="https://mercure-imaging.org/docs/advanced.html#additional-settings" target="_blank" title="This setting is needed for running MONAI modules, but it makes the server more vulnerable. Carefully read the documentation"><i class="fas fa-exclamation-circle has-text-warning" style="margin-left: 1px;"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Server Timezone:</td>
+                        <td>{{config['server_time']}}</td>
+                    </tr> 
+                    <tr>
+                        <td>Local Timezone:</td>
+                        <td>{{config['local_time']}}</td>
+                    </tr>                                        
+                </table>
+            </div>
+        </div>              
+        <div class="columns">
+            <div class="column is-full">
+                <h5 class="title is-5 configtitle"><i
+                        class="fas fa-plug has-text-success"></i>&nbsp;&nbsp;DICOM Connectivity</h5>
+                <table class="table is-narrow is-hoverable is-fullwidth configtable">
+                    <col width="230px">
+                    <tr>
+                        <td>DICOM Port:</td>
+                        <td>{{config['port']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Accept Compressed Images:</td>
+                        <td>{{config['accept_compressed_images']}}
+                            {% if config['accept_compressed_images']==True %}
+                            <a href="https://mercure-imaging.org/docs/advanced.html#additional-settings" target="_blank" title="This setting can be problematic. Carefully read the documentation"><i class="fas fa-exclamation-circle has-text-warning" style="margin-left: 1px;"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if config['dicom_receiver']['additional_tags']|length > 0 %}
+                    <tr>
+                        <td>Additional DICOM Tags:</td>
+                        <td>
+                            {% for item in config['dicom_receiver']['additional_tags'] %}
+                            {{ item }}{% if not loop.last %},{% endif %}
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        <div class="columns">
+            <div class="column is-full">
+                <h5 class="title is-5 configtitle"><i
+                        class="fas fa-exclamation-triangle has-text-success"></i>&nbsp;&nbsp;Error Handling</h5>
+                <table class="table is-narrow is-hoverable is-fullwidth configtable">
+                    <col width="230px">
+                    <tr>
+                        <td>Retry Delay:</td>
+                        <td>{{config['retry_delay']}} sec</td>
+                    </tr>
+                    <tr>
+                        <td>Max. Retries:</td>
+                        <td>{{config['retry_max']}}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="columns">
+            <div class="column is-full">
+                <h5 class="title is-5 configtitle"><i
+                        class="fas fa-bullhorn has-text-success"></i>&nbsp;&nbsp;Monitoring</h5>
+                <table class="table is-narrow is-hoverable is-fullwidth configtable">
+                    <col width="230px">
+                    <tr>
+                        <td>Bookkeeper:</td>
+                        <td>{{config['bookkeeper']}}</td>
+                    </tr>
+                    {% if config['graphite_ip'] %}
+                    <tr>
+                        <td>Graphite IP:</td>
+                        <td>{{config['graphite_ip']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Graphite Port:</td>
+                        <td>{{config['graphite_port']}}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td>Graphite:</td>
+                        <td>Not configured</td>
+                    </tr>
+                    {% endif %}                    
+                    {% if config['influxdb_host'] %}
+                    <tr>
+                        <td>InfluxDB Host:</td>
+                        <td>{{config['influxdb_host']}}</td>
+                    </tr>
+                    <tr>
+                        <td>InfluxDB Organization:</td>
+                        <td>{{config['influxdb_org']}}</td>
+                    </tr>
+                    <tr>
+                        <td>InfluxDB Token:</td>
+                        <td>{{config['influxdb_token']}}</td>
+                    </tr>
+                    <tr>
+                        <td>InfluxDB Bucket:</td>
+                        <td>{{config['influxdb_bucket']}}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td>InfluxDB:</td>
+                        <td>Not configured</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td>Notification Email From:</td>
+                        <td>{{config['email_notification_from']}}</td>
+                    </tr>         
+                    <tr>
+                        <td>PHI in Notifications:</td>
+                        <td>{% if config['phi_notifications']==True %}
+                            Enabled <a href="https://mercure-imaging.org/docs/advanced.html#additional-settings" target="_blank" title="This setting can be dangerous. Carefully read the documentation and understand the risks."><i class="fas fa-exclamation-circle has-text-warning" style="margin-left: 1px;"></i></a>
+                            {% else %}                            
+                            Disabled
+                            {% endif %}
+                        </td>
+                    </tr>                               
+                </table>
+            </div>
+        </div>
+        <div class="columns">
+            <div class="column is-full">
+                <h5 class="title is-5 configtitle"><i class="fas fa-bed has-text-success"></i>&nbsp;&nbsp;Off-Peak Hours
+                </h5>
+                <table class="table is-narrow is-hoverable is-fullwidth configtable">
+                    <col width="230px">
+                    <tr>
+                        <td>From:</td>
+                        <td>{{config['offpeak_start']}}</td>
+                    </tr>
+                    <tr>
+                        <td>To:</td>
+                        <td>{{config['offpeak_end']}}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="columns">
+            <div class="column is-full">
+                <h5 class="title is-5 configtitle"><i
+                        class="fas fa-hourglass-end has-text-success"></i>&nbsp;&nbsp;Thresholds</h5>
+                <table class="table is-narrow is-hoverable is-fullwidth configtable">
+                    <col width="230px">
+                    <tr>
+                        <td>Series Completion:</td>
+                        <td>{{config['series_complete_trigger']}} sec</td>
+                    </tr>
+                    <tr>
+                        <td>Study Completion:</td>
+                        <td>{{config['study_complete_trigger']}} sec</td>
+                    </tr>
+                    <tr>
+                        <td>Force Study Completion:</td>
+                        <td>{{config['study_forcecomplete_trigger']}} sec</td>
+                    </tr>
+                    <tr>
+                        <td>Retention Period:</td>
+                        <td>{{config['retention']}} sec</td>
+                    </tr>
+                    <tr>
+                        <td>Emergency Cleaning:</td>
+                        <td>{{config['emergency_clean_percentage']}}&percnt; diskspace full</td>
+                    </tr>
+                    <tr>
+                        <td>Router Interval:</td>
+                        <td>{{config['router_scan_interval']}} sec</td>
+                    </tr>
+                    <tr>
+                        <td>Dispatcher Interval:</td>
+                        <td>{{config['dispatcher_scan_interval']}} sec</td>
+                    </tr>
+                    <tr>
+                        <td>Cleaner Interval:</td>
+                        <td>{{config['cleaner_scan_interval']}} sec</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="columns">
+            <div class="column is-full">
+                <h5 class="title is-5 configtitle"><i
+                        class="fas fa-folder-open has-text-success"></i>&nbsp;&nbsp;Folders</h5>
+                <table class="table is-narrow is-hoverable is-fullwidth configtable">
+                    <col width="230px">
+                    <tr>
+                        <td>Incoming:</td>
+                        <td>{{config['incoming_folder']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Studies:</td>
+                        <td>{{config['studies_folder']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Outgoing:</td>
+                        <td>{{config['outgoing_folder']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Processing:</td>
+                        <td>{{config['processing_folder']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Success:</td>
+                        <td>{{config['success_folder']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Error:</td>
+                        <td>{{config['error_folder']}}</td>
+                    </tr>
+                    <tr>
+                        <td>Discard:</td>
+                        <td>{{config['discard_folder']}}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

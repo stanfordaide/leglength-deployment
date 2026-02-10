@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="">
+  <meta name="author" content="">
+  <title>mercure{% if self.title() %} &nbsp;&mid;&nbsp; {% endif %}{% block title %}{% endblock %}{% if appliance_name != 'master' %} &nbsp;&minus;&nbsp; {{ appliance_name }}{% endif %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/bulma.min.css') }}">
+  <script nonce="{{ csp_nonce }}" defer src="{{ url_for('static', path='/js/fontawesome-5.9.js') }}"></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', path='/js/jquery-3.5.1.min.js') }}"></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', path='/js/htmx.min.js') }}"></script>
+  <link href="{{ url_for('static', path='/css/all.min.css') }}" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/bulma-extensions.min.css') }}">
+  <link href="{{ url_for('static', path='/css/tooltip.css') }}" rel="stylesheet">
+  <script nonce="{{ csp_nonce }}" type="text/javascript" src="{{ url_for('static', path='/js/bulma-extensions.min.js') }}"></script>
+  <link rel="shortcut icon" href="{{ url_for('static', path='favicon.ico') }}">
+  {% block extra_head %} {% endblock %}
+  <link href="{{ url_for('static', path='/css/custom.css') }}" rel="stylesheet">
+</head>
+
+<body>
+  <nav class="navbar is-black" role="navigation" aria-label="main navigation">
+    <div class="container">
+      <div class="navbar-brand" style="margin-right: 20px">
+        <a class="navbar-item is-size-5 brand" href="/">
+          <img src="{{ url_for('static', path='header_logo.png') }}" width="132" height="24"></img>
+        </a>
+        <a role="button" class="navbar-burger burger" aria-label="menu" aria-expanded="false"
+          data-target="navbarMainMenu">
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </a>
+      </div>
+      <div id="navbarMainMenu" class="navbar-menu">
+        {% macro highlight(the_page) -%}
+            {% if page != the_page %}has-text-grey-light{% endif %}
+        {%- endmacro %}
+        <div class="navbar-start">
+          {% if logged_in %}
+          <a class="navbar-item {{highlight('homepage')}}" href="/">
+            Overview
+          </a>
+          <a class="navbar-item {% if page not in ['rules', 'targets','modules', 'users'] %} has-text-grey-light{%endif%}" href="/rules">
+            Settings
+          </a>
+          <a class="navbar-item {{highlight('queue')}}" href="/queue">
+            Queue
+          </a>
+          {% if is_admin %}
+          <a class="navbar-item {{highlight('logs')}}" href="/logs">
+            Logs
+          </a>
+          <a class="navbar-item {{highlight('tools')}}" href="/tools">
+            Tools
+          </a>
+          {% endif %}
+          {% endif %}
+        </div>
+        {% if logged_in %}{% if appliance_name != 'master' %}
+        <div class="navbar-start is-hidden-mobile" style="flex-grow: 1; justify-content: center;">
+          <div class="navbar-item" style=""><span class="has-text-weight-bold tag is-white is-rounded" 
+               style="pointer-events: none; background-color: {{ appliance_color }}; padding-left: 12px; padding-right: 12px;"><i class="fas fa-bookmark"></i>&nbsp;&nbsp;{{ appliance_name }}</span></div>
+        </div>
+        {% endif %}{% endif %}
+        {% if logged_in %}
+        <div class="navbar-end">
+          <div class="navbar-item has-dropdown is-hoverable">
+            <a class="navbar-link">User: {{ user }}</a>
+            <div class="navbar-dropdown">
+              <a class="navbar-item" href="https://mercure-imaging.org/docs/index.html" target="_blank">
+                Help
+              </a>
+              <a class="navbar-item get-support" href="https://mercure-imaging.zulipchat.com/#narrow/stream/423754-support" target="_blank">
+                Get Support
+              </a>         
+              <a class="navbar-item" href="https://github.com/mercure-imaging/mercure/issues" target="_blank">
+                Report Bug
+              </a>
+              <hr class="navbar-divider">
+              <a class="navbar-item" href="/settings">
+                Account Settings
+              </a>
+              <hr class="navbar-divider">
+              <a class="navbar-item" href="/logout">
+                Logout
+              </a>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <section class="section" style="flex: 1;">
+  {% block extra_nav %} 
+    
+  {% if page in ['rules','targets','modules', 'users'] %}
+    <div class="container" style="margin-bottom: 30px;">
+      <h1 class="title">Settings</h1>
+      <div class="tabs logtabs" style="margin-top: 20px;">
+        <ul>
+          <li class="{% if page == 'rules' %}is-active{% endif %}"><a href="/rules">Rules</a></li>
+          <li class="{% if page == 'targets' %}is-active{% endif %}"><a href="/targets">Targets</a></li>
+          <li class="{% if page == 'modules' %}is-active{% endif %}"><a href="/modules">Modules</a></li>
+          {% if is_admin %}
+            <li class="{% if page == 'users' %}is-active{% endif %}"><a href="/users">Users</a></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+  {% endblock %}
+
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p>mercure Orchestrator&nbsp;&minus;&nbsp;Version {{mercure_version}}<br />
+        <a href="https://mercure-imaging.org" target="_blank">https://mercure-imaging.org</a>
+      </p>
+    </div>
+  </footer>
+  <style>
+    .json_container .cm-line:first-child::before {
+      content: attr(placeholder);
+    }
+  </style>
+  
+  <script nonce="{{ csp_nonce }}" type="module">
+    import { JSONEditor } from "{{ url_for('static', path='/js/svelte-jsoneditor.js') }}"
+
+    function paginate(cards, items_per_page=12) {
+        const paginationList = document.getElementById('paginationList');
+        const searchInput = document.getElementById('searchInput');
+        searchInput.value = '';
+        const ruleCards = cards;
+        const itemsPerPage = items_per_page; // Adjust this value to change items per page
+        let currentPage = 1;
+
+        function showPage(page) {
+            const startIndex = (page - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            let visibleCount = 0;
+            
+            Array.from(ruleCards).forEach((card, index) => {
+                if (card.style.display !== 'none') {
+                    visibleCount++;
+                    if (visibleCount > startIndex && visibleCount <= endIndex) {
+                        card.classList.remove('is-hidden');
+                    } else {
+                        card.classList.add('is-hidden');
+                    }
+                }
+            });
+
+            updatePagination();
+        }
+
+        function updatePagination() {
+            const visibleCards = Array.from(ruleCards).filter(card => card.style.display !== 'none');
+            const pageCount = Math.ceil(visibleCards.length / itemsPerPage);
+
+            paginationList.innerHTML = '';
+            for (let i = 1; i <= pageCount; i++) {
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                a.classList.add('pagination-link');
+                if (i === currentPage) {
+                    a.classList.add('is-current');
+                }
+                a.setAttribute('aria-label', `Goto page ${i}`);
+                a.textContent = i;
+                a.addEventListener('click', () => {
+                    currentPage = i;
+                    showPage(currentPage);
+                });
+                li.appendChild(a);
+                paginationList.appendChild(li);
+            }
+        }
+
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            Array.from(ruleCards).forEach( card => {
+                const ruleName = card.getAttribute('data-name').toLowerCase();
+                if (ruleName.includes(searchTerm)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            currentPage = 1;
+            showPage(currentPage);
+        });
+        showPage(currentPage);
+    }
+    window.paginate = paginate;
+    $(document).ready(function () {
+      // Check for click events on the navbar burger icon
+      $(".navbar-burger").click(function () {
+        // Toggle the "is-active" class on both the "navbar-burger" and the "navbar-menu"
+        $(".navbar-burger").toggleClass("is-active");
+        $(".navbar-menu").toggleClass("is-active");
+      });
+      document.body.addEventListener('htmx:targetError', function (evt) {
+        alert("Unexpected error: HTML target missing!")
+      });
+
+        document.body.addEventListener('htmx:afterRequest', function (evt) {
+          if (evt.detail.xhr.status != 200) {
+            let message;
+            if ( evt.detail.xhr.responseText == "Internal Server Error" ) {
+              message = "Unexpected server error, please check server logs.";
+              console.error(message);
+            } else {
+              message = evt.detail.xhr.responseText;
+            }
+            let target = evt.target.attributes.getNamedItem('hx-target');
+            let el = null;
+            if (target) {
+              el = document.querySelector(target.value);
+            }
+            if (el) {
+              el.innerHTML = message;
+            } else {
+              alert(message);
+            }
+          }
+          // const targetError = evt.target.attributes.getNamedItem('hx-target-error')
+          // if (evt.detail.failed && targetError) {
+          //   document.getElementById(targetError.value).style.display = "inline";
+          // }
+        });
+        // document.body.addEventListener('htmx:beforeRequest', function (evt) {
+        //   const targetError = evt.target.attributes.getNamedItem('hx-target-error')
+        //   if (targetError) {
+        //     document.getElementById(targetError.value).style.display = "none";
+        //   }
+        // });
+        $("[data-json]").map(((i,el)=>{
+          let new_div = document.createElement("div")
+          $(new_div).addClass("json_container")
+          el = $(el)
+          el.hide(0)
+          el.after(new_div);
+          
+          let ed = new JSONEditor({
+              target: new_div,
+              props: {
+                  mode: "text",
+                  mainMenuBar: false,
+                  statusBar: false,
+                  navigationBar: false,
+                  askToFormat: false,
+                  onChange: (updatedContent, previousContent, { contentErrors, patchResult }) => {
+                      if (contentErrors) {
+                          return;
+                      }
+                      if (!updatedContent.text) {
+                       setTimeout(()=>$(new_div).find(".cm-line").attr("placeholder",el.attr("placeholder")), 10);
+                      }
+                      el.val(updatedContent.text);
+                  },
+                  onFocus: (content) => {
+                    if (!$(new_div).find(".cm-line").text()) 
+                      setTimeout(()=>$(new_div).find(".cm-line").attr("placeholder",el.attr("placeholder")), 10);
+                  },
+                  onBlur: (content) => {
+                    if (!$(new_div).find(".cm-line").text()) 
+                      setTimeout(()=>$(new_div).find(".cm-line").attr("placeholder",el.attr("placeholder")), 10);
+                  }
+                  }});
+          el.on("input", (evt)=> {
+            ed.select(null);
+            ed.set({"text":el.val()});
+            // if (!el.val()) {
+            //   setTimeout(()=>$(new_div).find(".cm-line").attr("placeholder",el.attr("placeholder")), 1000);
+            // }
+          })
+          // if (el.val() == "") {
+          //   ed.set({"text": el.attr("placeholder")})
+          // } else {
+          let val = el.val();
+          try {
+            val = JSON.stringify(JSON.parse(val),null,4);
+          } catch {}
+          ed.set({"text":val})
+          if (!el.val()) {
+            setTimeout(()=>$(new_div).find(".cm-line").attr("placeholder",el.attr("placeholder")), 1000);
+          }          
+          // }
+        }))        
+      });        
+</script>
+</body>
+</html>

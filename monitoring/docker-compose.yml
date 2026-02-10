@@ -1,0 +1,253 @@
+# Leg Length AI Deployment - Consolidated Monitoring Stack
+# This stack provides:
+#   - Workflow Dashboard (study tracking, actions)
+#   - Grafana (infrastructure monitoring, alerting)
+#   - Prometheus (metrics collection)
+#   - Graphite (Mercure metrics)
+#   - Node Exporter (host metrics)
+#   - cAdvisor (container metrics)
+
+version: "3.8"
+
+services:
+  # =============================================================================
+  # WORKFLOW MONITORING (from orthanc routing-api)
+  # =============================================================================
+  
+  workflow-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: workflow-api
+    restart: unless-stopped
+    ports:
+      - "${WORKFLOW_API_PORT:-8044}:5000"
+    environment:
+      - FLASK_ENV=production
+      - DB_HOST=workflow-db
+      - DB_PORT=5432
+      - DB_NAME=${WORKFLOW_DB_NAME:-workflow_tracking}
+      - DB_USER=${WORKFLOW_DB_USER:-workflow}
+      - DB_PASS=${WORKFLOW_DB_PASS:-workflow123}
+      # Orthanc connection (for actions)
+      - ORTHANC_URL=${ORTHANC_URL:-http://host.docker.internal:8042}
+      - ORTHANC_USER=${ORTHANC_USER:-orthanc}
+      - ORTHANC_PASS=${ORTHANC_PASS:-orthanc}
+      # Mercure DB connection (for enriched tracking)
+      - MERCURE_DB_HOST=${MERCURE_DB_HOST:-}
+      - MERCURE_DB_PORT=${MERCURE_DB_PORT:-5432}
+      - MERCURE_DB_NAME=${MERCURE_DB_NAME:-mercure}
+      - MERCURE_DB_USER=${MERCURE_DB_USER:-mercure}
+      - MERCURE_DB_PASS=${MERCURE_DB_PASS:-}
+    networks:
+      - monitoring-net
+    depends_on:
+      workflow-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  workflow-db:
+    image: postgres:15-alpine
+    container_name: workflow-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${WORKFLOW_DB_NAME:-workflow_tracking}
+      - POSTGRES_USER=${WORKFLOW_DB_USER:-workflow}
+      - POSTGRES_PASSWORD=${WORKFLOW_DB_PASS:-workflow123}
+    volumes:
+      - workflow_db_data:/var/lib/postgresql/data
+    networks:
+      - monitoring-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${WORKFLOW_DB_USER:-workflow} -d ${WORKFLOW_DB_NAME:-workflow_tracking}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  workflow-ui:
+    image: nginx:alpine
+    container_name: workflow-ui
+    restart: unless-stopped
+    ports:
+      - "${WORKFLOW_UI_PORT:-8080}:80"
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+      - ./config/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - monitoring-net
+    depends_on:
+      - workflow-api
+
+  # =============================================================================
+  # METRICS COLLECTION
+  # =============================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    networks:
+      - monitoring-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Graphite for Mercure metrics (Mercure has native Graphite support)
+  graphite:
+    image: graphiteapp/graphite-statsd:latest
+    container_name: graphite
+    restart: unless-stopped
+    ports:
+      - "${GRAPHITE_PORT:-2003}:2003"      # Carbon line receiver
+      - "${GRAPHITE_PICKLE_PORT:-2004}:2004"  # Carbon pickle receiver
+      - "${STATSD_PORT:-8125}:8125/udp"    # StatsD UDP
+    volumes:
+      - graphite_data:/opt/graphite/storage
+    networks:
+      - monitoring-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Node Exporter for host system metrics (disk, CPU, memory)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - monitoring-net
+    pid: host
+
+  # cAdvisor for Docker container metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - "${CADVISOR_PORT:-8081}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring-net
+    privileged: true
+    devices:
+      - /dev/kmsg
+
+  # Pushgateway for batch job metrics
+  pushgateway:
+    image: prom/pushgateway:latest
+    container_name: pushgateway
+    restart: unless-stopped
+    ports:
+      - "${PUSHGATEWAY_PORT:-9091}:9091"
+    networks:
+      - monitoring-net
+
+  # =============================================================================
+  # VISUALIZATION & ALERTING
+  # =============================================================================
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Enable embedding for iframe integration
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - monitoring-net
+    depends_on:
+      - prometheus
+      - graphite
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    restart: unless-stopped
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    volumes:
+      - alertmanager_data:/alertmanager
+      - ./config/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - monitoring-net
+
+# =============================================================================
+# NETWORKS & VOLUMES
+# =============================================================================
+
+networks:
+  monitoring-net:
+    driver: bridge
+  # External networks - connect to other stacks
+  orthanc_default:
+    external: true
+    name: orthanc_default
+  mercure_default:
+    external: true
+    name: mercure_default
+
+volumes:
+  workflow_db_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  graphite_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local

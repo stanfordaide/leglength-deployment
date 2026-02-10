@@ -1,0 +1,161 @@
+{% extends "dashboards/dashboards.html" %}
+
+{% block title %}Tasks{% endblock %}
+
+{% block extra_head %}
+    <script nonce="{{ csp_nonce }}"  type="text/javascript" src="{{ url_for('static', path='DataTables/datatables.min.js') }}"></script>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', path='DataTables/datatables.min.css') }}"/>  
+{% endblock %}
+
+{% block dashboard_content %}
+<main role="main">
+    <h1 class="title is-4">Tasks</h1>
+    <div class="container">
+        <div class="columns">
+        <div class="column is-one-third">
+            <table class="table is-narrow is-hoverable is-fullwidth jobtable" id="series-table">
+                <thead>
+                    <tr>
+                        <th>id</th>
+                        <th>time</th>
+                        <th>modality</th>
+                        <th>desc</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+        <div class="column">
+            <table class="table is-narrow is-hoverable is-fullwidth jobtable" id="events-table">
+                <thead>
+                    <tr>
+                        <th>task_id</th>
+                        <th>event</th>
+                        <th>sender</th>
+                        <th>target</th>
+                        <th>info</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+            </div>
+            </div>
+    </div>
+</main>
+<script nonce="{{ csp_nonce }}">
+$(document).ready(function () {      
+
+$('#events-table').DataTable( {
+    "paging": false,
+    "ordering": false,
+    "searching": false,
+    "language": {
+       "emptyTable": "Select a task."
+    },
+    dom: 'Bfrtip',
+   "scrollY": "740px",
+   "scrollX": false,
+   "scrollCollapse": true,   
+   "columnDefs": [{ targets: '_all', render: DataTable.render.text() },
+            { "visible": false, "targets": 0,  render: DataTable.render.text() },
+    ],
+    "drawCallback": function (settings) {
+            var api = this.api();
+            var rows = api.rows({ page: 'current' }).nodes();
+            var last = null;
+ 
+            api
+                .column(0, { page: 'current' })
+                .data()
+                .each(function (group, i) {
+                    if (last !== group) {
+                        $(rows)
+                            .eq(i)
+                            .before('<tr class="group"><td colspan="5" class="has-text-white has-background-black">Task ' + group + '</td></tr>');
+ 
+                        last = group;
+                    }
+                });
+        },
+})
+$('#series-table').DataTable( {
+   "ordering": true,
+   "order": [[ 1, "desc"]],
+   "info": false,
+   "searching": false,
+   "language": {
+       "emptyTable": "No task data available."
+   },
+   "columnDefs": [{ targets: '_all', render: DataTable.render.text() },
+            { "visible": false, "targets": 0, render: DataTable.render.text() },
+    ],
+   select: {
+            style: 'single'
+   },
+   dom: 'Bfrtip',
+   "scrollY": "740px",
+   "scrollX": false,
+   "scrollCollapse": true,   
+} ).on( 'select deselect', function () {
+    var selectedRows = $('#series-table').DataTable().rows( { selected: true } )
+    if (selectedRows.count()>0){
+        console.log( selectedRows.data()[0][0])
+        $.ajax({
+            type: 'GET',
+            url: '/api/get-task-events',
+            data: {'task_id': selectedRows.data()[0][0]},
+            dataType: 'json',
+            error: function () {
+                // $('#erroralert').show();
+            },
+            success: function (data) {
+                console.log(data);
+                // $('#erroralert').hide();
+                var eventstable = $('#events-table').DataTable().clear();
+                Object.keys(data).forEach(function (key) {
+                    console.log(data[key])
+                    eventstable.row.add([data[key]["task_id"].slice(0,8) || "", data[key]["event"], data[key]["sender"],  data[key]["target"], data[key]["info"]])
+                    // jobtable.row.add( [ key, data[key]["ACC"], data[key]["MRN"], data[key]["Scope"], data[key]["FailStage"] ] );
+                })
+                eventstable.draw();
+            },
+            // complete: function (data) {
+            //     $('#loadingspinner').hide();
+            // },
+            timeout: 3000
+        });
+
+
+    }
+} );
+
+$.ajax({
+    type: 'GET',
+    url: '/api/get-tasks',
+    data: {},
+    dataType: 'json',
+    error: function () {
+        // $('#erroralert').show();
+    },
+    success: function (data) {
+        // $('#erroralert').hide();
+        var jobtable = $('#series-table').DataTable();
+        Object.keys(data).forEach(function (key) {
+            console.log(data[key])
+            jobtable.row.add([data[key]["id"], data[key]["time"], data[key]["tag_modality"], data[key]["tag_seriesdescription"]])
+            // jobtable.row.add( [ key, data[key]["ACC"], data[key]["MRN"], data[key]["Scope"], data[key]["FailStage"] ] );
+        })
+        jobtable.draw();
+    },
+    // complete: function (data) {
+    //     $('#loadingspinner').hide();
+    // },
+    timeout: 3000
+});
+
+
+});
+</script>
+{% endblock %}

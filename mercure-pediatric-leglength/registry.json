@@ -1,0 +1,5 @@
+{
+  "rn50adncti": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/chosen/resnet50-adncti.pth",
+  "rn50adkpncti": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/chosen/resnet50-adkpncti.pth",
+  "rn50adkp": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/chosen/resnet50-adkp.pth"
+} 

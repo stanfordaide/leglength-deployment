@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+
+{% block title %}Modules{% endblock %}
+
+{% block content %}
+<main role="main">
+    <div class="container">
+        <h1 class="title is-4">Processing Modules - {{module_name}}</h1>
+
+        <div class="notification is-danger" id="erroralert" style="display: none;">
+            <i class="fas fa-bug"></i>&nbsp;&nbsp;Error in configuration detected. Please check input fields for correct
+            syntax.
+        </div>
+
+        <div class="tabs is-centered is-toggle is-toggle-rounded" style="margin-top: 30px;" id="tabs">
+            <ul>
+                <li data-tab="docker" class="is-active">
+                    <a>
+                        <span class="icon"><i class="fab fa-docker"></i></span>
+                        <span>Docker</span>
+                    </a>
+                </li>
+                <li data-tab="settings">
+                    <a>
+                        <span class="icon"><i class="fas fa-sliders-h"></i></span>
+                        <span>Settings</span>
+                    </a>
+                </li>
+                <li data-tab="nomad">
+                    <a>
+                        <span class="icon"><i class="fas fa-dolly-flatbed"></i></span>
+                        <span>Orchestration</span>
+                    </a>
+                </li>
+                <li data-tab="information">
+                    <a>
+                        <span class="icon"><i class="fa fa-info-circle"></i></span>
+                        <span>Information</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <form method="post">
+            <div id="tab-content">
+                <div class="panel is-active" data-content="docker">
+                    <div class="field">
+                        <label class="label" for="docker_tag">Docker Tag</label>
+                        <p class="control">
+                            <input class="input" id="docker_tag" required type="text" placeholder="Docker tag" name="docker_tag"
+                                value="{{module['docker_tag']}}">
+                        </p>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="additional_volumes">Additional Volumes</label>
+                        <p class="control">
+                            <input class="input"
+                                id="additional_volumes"
+                                type="text"
+                                data-json
+                                placeholder="{&quot;/host&quot;: {&quot;bind&quot;: &quot;/config&quot;, &quot;mode&quot;: &quot;r&quot;}}"
+                                name="additional_volumes"
+                                value="{{module['additional_volumes']}}">
+                        </p>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="environment">Environment Variables</label>
+                        <p class="control">
+                            <input class="input"
+                                id="environment"
+                                type="text"
+                                data-json
+                                placeholder="{&quot;foo&quot;: &quot;bar&quot;}"
+                                name="environment"
+                                value="{{module['environment']}}">
+                        </p>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="docker_arguments">Docker Arguments <sup><a class="greenlink" href="https://docker-py.readthedocs.io/en/stable/containers.html" target="_blank"><i class="fas fa-question-circle"></i></a></sup></label>
+                        <p class="control is-expanded">
+                            <input class="input"
+                                id="docker_arguments"
+                                type="text"
+                                data-json
+                                placeholder="See https://docker-py.readthedocs.io/en/stable/containers.html for parameters"
+                                name="docker_arguments"
+                                value="{{module['docker_arguments']}}">
+                        </p>
+                    </div>             
+                    <div class="field" style="margin-top: 30px;">
+                        <input id="gpu_support" name="gpu_support" type="checkbox"
+                            class="switch is-rounded is-dark">
+                        <label for="gpu_support" title="This setting requires that the NVIDIA Container Toolkit is installed">Enable NVIDIA GPU Support</label>
+                    </div>
+                    <div class="field" style="">
+                        <input id="requires_root" type="checkbox" name="requires_root"
+                            class="switch is-rounded is-dark" value="True" {% if
+                            module['requires_root']==True %}checked="checked" {% endif%} >
+                        <label for="requires_root" title="This setting is required for running MONAI applications">Requires Root User</label>
+                        {% if support_root_modules != True %}
+                        <div class="notification is-warning" id="warningroot" style="margin-top: 16px;">
+                            <i class="fas fa-info-circle"></i>&nbsp;&nbsp;&quot;Support Root Modules&quot; must be enabled on the <a href="/configuration">Configuration</a> page before this option can be used.
+                        </div>                
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="panel" data-content="settings">
+                    <div class="field">
+                        <label class="label" for="settings">Settings</label>
+                        <div class="control">
+                            <textarea name="settings" id="settings" class="textarea textarea_scroll monofont"
+                                autocomplete='off' rows="9"
+                                data-json
+                                placeholder="Global module settings">{{settings}}</textarea>
+                        </div>
+                    </div>                   
+                </div>
+                <div class="panel" data-content="nomad">
+                    {% if runtime != "nomad" %}
+                    <div class="notification is-info" id="warningnomad">
+                        <i class="fas fa-info-circle"></i>&nbsp;&nbsp;Settings are only relevant when using Nomad as process runner. This mercure installation is not using Nomad.
+                    </div>                    
+                    {% endif %}
+                    <div class="field">
+                        <label class="label" for="constraints">Execution Constraints (HCL) <sup><a class="greenlink" href="https://www.nomadproject.io/docs/job-specification/constraint" target="_blank"><i class="fas fa-question-circle"></i></a></sup></label>
+                        <div class="control">
+                            <textarea name="constraints" id="constraints" class="textarea textarea_scroll monofont"
+                                autocomplete='off' rows="5"
+                                placeholder='constraint {  attribute = "${attr.os.name}" value = "ubuntu" }&#10;&#10;See https://www.nomadproject.io/docs/job-specification/constraint for examples'>{{module.constraints}}</textarea>
+                        </div>
+                    </div>   
+                    <div class="field">
+                        <label class="label" for="resources">Resource Requirements (HCL) <sup><a class="greenlink" href="https://www.nomadproject.io/docs/job-specification/resources" target="_blank"><i class="fas fa-question-circle"></i></a></sup></label>
+                        <div class="control">
+                            <textarea name="resources" id="resources" class="textarea textarea_scroll monofont"
+                                autocomplete='off' rows="5"
+                                placeholder='resources { cpu = 100 memory = 256 }&#10;&#10;See https://www.nomadproject.io/docs/job-specification/resources for examples'>{{module.resources}}</textarea>
+                        </div>
+                    </div>   
+                </div>
+                <div class="panel" data-content="information">
+                    <div class="field"">
+                        <label class="label" for="comment">Comment</label>
+                        <div class="control">
+                            <textarea name="comment" id="comment" class="textarea textarea_scroll"
+                                autocomplete='off' rows="5"
+                                placeholder="Module description">{{module['comment']}}</textarea>
+                        </div>
+                    </div>            
+                    <div class="field">
+                        <label class="label">Contact</label>
+                        <div class="control">
+                            <input name="contact" class="input" autocomplete='off' type="email" placeholder="Email address"
+                                value="{{module['contact']}}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="field">
+                <p class="control buttons" style="margin-top: 50px;">
+                    <button type="submit" class="button is-success" value="default action">
+                        <span class="icon"><i class="fas fa-save"></i></span><span>Save</span>
+                    </button>
+                    <a class="button" href="/modules"><span class="icon"><i class="fas fa-ban"></i></span><span>Cancel</span></a>
+                </p>
+            </div>
+        </form>
+    </div>
+</main>
+
+
+<script nonce="{{ csp_nonce }}">
+
+    function toggleRequiresRoot(cb) {
+        {% if support_root_modules != True %}
+        if (cb.checked) {
+            $( "#warningroot" ).show();
+        } else {
+            $( "#warningroot" ).hide();
+        }
+        {% endif %}
+    }
+    $('#requires_root').click((evt) => toggleRequiresRoot(evt.target));
+
+    function toggleGPUSupport(cb) {        
+        try {
+            text_value = $( "#docker_arguments" ).val();
+            if (text_value == "") {
+                text_value = "{}";
+            }
+            json_value = JSON.parse(text_value);
+            if (cb.checked) {           
+                json_value["runtime"] = "nvidia";                
+            } else {
+                if ('runtime' in json_value) {
+                    delete json_value.runtime;
+                }
+            }   
+            text_value = JSON.stringify(json_value);
+            if (text_value == "{}") {
+                text_value = "";
+            }
+            $("#docker_arguments").val(text_value);
+        } catch (e) {
+        }      
+    }
+    
+    $('#gpu_support').click((evt)=> toggleGPUSupport(evt.target))
+
+    function updateDockerArguments() {  
+        console.log("update docker arguments")
+        try {        
+            text_value = $( "#docker_arguments" ).val();
+            if (text_value == "") {
+                text_value = "{}";
+            }
+            json_value = JSON.parse(text_value);
+            if ('runtime' in json_value) {
+                if (json_value["runtime"] == "nvidia") {
+                    $("#gpu_support").prop("checked", true);
+                } else {
+                    $("#gpu_support").prop("checked", false);
+                }
+            } else {
+                $("#gpu_support").prop("checked", false);
+            }
+        } catch (e) {
+            console.error(e);
+        }         
+    }
+    $('#docker_arguments').on({
+        "keypress": updateDockerArguments,
+        "keydown": updateDockerArguments,
+        "change": updateDockerArguments,
+        "input": updateDockerArguments
+    })
+
+    function validate() {
+        var field = "";
+        try {
+            field = "Settings";
+            if ($('#settings').val() == "") {
+                $('#settings').val("{}");
+            }
+            JSON.parse($('#settings').val());
+
+            field = "Docker Arguments";
+            field_value=$('#docker_arguments').val();
+            if (field_value == "") {
+                field_value="{}";
+            }
+            JSON.parse(field_value);
+
+            field = "Additional Volumes";
+            field_value=$('#additional_volumes').val();
+            if (field_value == "") {
+                field_value="{}";
+            }
+            JSON.parse(field_value);            
+
+            field = "Environment Variables";
+            field_value=$('#environment').val();
+            if (field_value == "") {
+                field_value="{}";
+            }
+            JSON.parse(field_value);             
+        } catch (e) {
+            $('#erroralert').html('<i class="fas fa-bug"></i>&nbsp;&nbsp;Invalid content in field "' + field + '". Please check for correct syntax.');
+            $('#erroralert').show();
+            if (field == "Settings")
+            {
+                $('#settings').addClass("is-danger");
+                $('#settings').focus();
+            }
+            if (field == "Docker Arguments")
+            {
+                $('#docker_arguments').addClass("is-danger");
+                $('#docker_arguments').focus();
+            }            
+            if (field == "Additional Volumes")
+            {
+                $('#additional_volumes').addClass("is-danger");
+                $('#additional_volumes').focus();
+            }            
+            if (field == "Environment Variables")
+            {
+                $('#environment').addClass("is-danger");
+                $('#environment').focus();
+            }            
+            return false;
+        }
+        console.log("PASSED");
+        return true;
+    }
+    $('form').on('submit', validate);
+    $(document).ready(function () {
+
+        {% if module['requires_root']==True %}
+        $("#warningroot").show();
+        {% else %}
+        $("#warningroot").hide();
+        {% endif %}
+
+        $('#tabs li').on('click', function () {
+            var tab = $(this).data('tab');
+
+            $('#tabs li').removeClass('is-active');
+            $(this).addClass('is-active');
+
+            $('#tab-content div.panel').removeClass('is-active');
+            $('div.panel[data-content="' + tab + '"]').addClass('is-active');
+        });
+
+        updateDockerArguments();
+    });
+
+</script>
+
+
+{% endblock %}

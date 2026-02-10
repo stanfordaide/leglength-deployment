@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Modules{% endblock %}
+
+{% block content %}
+<style>
+    .radiobuttons > input:checked + label{
+        background: black;
+        color: white;
+    }
+</style>
+    <main role="main">
+        <div class="container">
+            <h1 class="title is-4">Processing Modules</h1>
+            <div class="field is-grouped" style="margin-bottom: 16px;">
+                <div class="control has-icons-left">
+                    <input class="input" type="text" id="searchInput" placeholder="Search..." value="">
+                    <span class="icon is-small is-left">
+                        <i class="fas fa-search"></i>
+                    </span>
+                </div>
+                <div class="control is-expanded">
+                </div>                
+                {% if is_admin %}
+                <div class="">
+                    <button id="show_add_modal" class="button is-success"><span class="icon"><i class="fas fa-plus"></i></span><span>Add</span></button>
+                </div>
+                {% endif %}
+            </div>
+    
+            {% for module_name, module in modules.items()|sort() %}
+                <div class="card entitycard" data-name="{{module_name}} {{module.docker_tag}}">
+                    <header class="card-header has-background-light">
+                        <p class="card-header-title card-toggle">
+                            <span class="icon"><i class="fas fa-cogs fa-lg"></i></span>&nbsp;&nbsp;{{ module_name }}
+                            <span style="margin-left: auto; font-weight: 200;">{{module.docker_tag|truncate(50, True)}}</span>
+                        </p>
+                        <a class="card-header-icon card-toggle">
+                            <i class="fa fa-angle-down"></i>
+                        </a>
+                    </header>
+                    <div class="card-content entitycard-content is-hidden">
+                        <div class="content">
+                            <table class="table is-narrow" style="margin-bottom: 8px;">
+                                <col width="150">
+                                <tr>
+                                    <td>Docker Tag:</td>
+                                    <td>{{ module.docker_tag }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Contact:</td>
+                                    <td>{{ module.contact }}</td>
+                                </tr>                                
+                                <tr>
+                                    <td>Comment:</td>
+                                    <td>{{ module.comment }}</td>
+                                </tr>                                
+                            </table>
+                            <div class="buttons is-right">
+                                {% if is_admin %}
+                                    <a class="button is-success" href="/modules/edit/{{module_name}}"><span class="icon"><i
+                                            class="fas fa-pen"></i></span><span>Edit</span></a>
+                                    <button class="button is-danger delete-button" value="{{module_name}}"
+                                            {% if module_name in used_modules%}disabled
+                                            title="Cannot delete because target is used by rule '{{ used_module }}'" {% endif %}><span class="icon"><i
+                                            class="fas fa-trash-alt"></i></span><span>Delete</span></button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+            <nav class="pagination is-centered" role="navigation" aria-label="pagination" style="margin-top: 16px;">
+                <ul class="pagination-list" id="paginationList">
+                </ul>
+            </nav>   
+        </div>
+
+        <div class="modal" id="addmodal">
+            <div class="modal-background">
+            </div>
+            <div class="modal-card">
+                <header class="modal-card-head">
+                    <p class="modal-card-title">Install New Module</p>
+                </header>
+                <section class="modal-card-body">
+                    <form hx-post="./" hx-target="#addmodal_message" htmx-added="title">
+                        <div class="field">
+                            <p class="control">
+                                <input class="input" id="addnewname" type="text" required pattern="[0-9a-zA-Z_\-]+"
+                                       placeholder="Name of module" name="name" autofocus>
+                            </p>
+                        </div>
+                        <div class="field">
+                            <p class="control">
+                                <input class="input" id="docker_tag" type="text" required pattern="[a-zA-Z0-9-:/_.@]+" placeholder="Docker tag" name="docker_tag" >
+                            </p>
+                        </div>
+                        <div class="field" style="margin-top: 20px; margin-bottom: 25px;">
+                            <label class="label">Module Type</label>
+                            <div class="control radiobuttons radiobuttons_module">
+                                <input type="radio" value="mercure" id="radio_mercure" name="container_type" style="display:none" checked>
+                                <label class="button containerradiobtn" for="radio_mercure" style="border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-top-left-radius: 290486px; border-bottom-left-radius: 290486px; padding-right: 4px;">
+                                 mercure
+                                </label>
+                                <input type="radio" value="monai" id="radio_monai" name="container_type" style="display:none">
+                                <label class="button containerradiobtn" for="radio_monai" style="margin-left: -5px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-top-right-radius: 290486px; border-bottom-right-radius: 290486px; padding-left: 4px;" title="Select for running MONAI applications">
+                                 MONAI
+                                </label>
+                            </div>
+                        </div>
+                        <div class="field" style="margin-top: 20px;"><span id="addmodal_message" style="color:#ff3860;"></span></div>
+                        <div class="field" style="margin-top: 25px;">
+                            <div class="control">
+                                <button id="confirmaddmodal" class="button is-success">Install</button>
+                                <a id="closeaddmodal" class="button">Cancel</a>
+                                <i class="fas fa-spin fa-spinner htmx-indicator" style="font-size: 1.5em; float: right !important;"></i>
+                            </div>                            
+                        </div>
+                    </form>
+                </section>
+            </div>
+        </div>
+        <div class="modal" id="deletemodal">
+            <div class="modal-background">
+            </div>
+            <div class="modal-card">
+                <header class="modal-card-head">
+                    <p class="modal-card-title">Delete Module?</p>
+                </header>
+                <section class="modal-card-body">
+                    <div class="field">
+                        Are you sure to delete the module? This cannot be undone.
+                    </div>
+                    <div class="field" style="margin-top: 20px;">
+                        <p class="control">
+                            <button id="confirmdeletemodal" class="button is-danger">Delete</button>
+                            <a id="closedeletemodal" class="button">Cancel</a>
+                        </p>
+                    </div>
+            </section>
+            </div>
+        </div>
+    </main>
+
+    <script nonce="{{ csp_nonce }}">
+        $('.delete-button').click((evt) => {
+            confirmDelete(evt.target.closest('button').value)
+        })
+
+        document.addEventListener('DOMContentLoaded', function () {
+            let cardToggles = document.getElementsByClassName('card-toggle');
+            for (let i = 0; i < cardToggles.length; i++) {
+                cardToggles[i].addEventListener('click', e => {
+                    e.currentTarget.parentElement.parentElement.childNodes[3].classList.toggle('is-hidden');
+                });
+            }
+            paginate(document.getElementsByClassName('entitycard'))
+        });
+
+        function showAddModal() {
+            $("#addnewname").val("");
+            $("#addmodal").addClass("is-active");
+            $("#addnewname").focus();
+        }
+        $('#show_add_modal').click(showAddModal)
+        var moduleToDelete = "";
+
+        function confirmDelete(val) {
+            moduleToDelete = val;
+            $("#deletemodal").addClass("is-active");
+        }
+
+        $(function () {
+            $('#closeaddmodal').click(function () {
+                $("#addmodal").removeClass("is-active");
+                $("#addmodal_message").html("")
+            })
+
+            $('#closedeletemodal').click(function () {
+                $("#deletemodal").removeClass("is-active");
+            })
+
+            $('#confirmdeletemodal').click(function () {
+                $("#deletemodal").removeClass("is-active");
+                var url = '/modules/delete/' + moduleToDelete;
+                var form = $('<form action="' + url + '" method="post"></form>');
+                $('body').append(form);
+                form.submit();
+            })
+        });
+    </script>
+
+{% endblock %}

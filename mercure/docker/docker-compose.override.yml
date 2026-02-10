@@ -1,0 +1,111 @@
+version: "3.9"
+# This file is used to override the default configuration of docker-compose.yml to enable development.
+x-env: &env
+  environment:
+    MERCURE_RUNNER: docker
+    MERCURE_ENV: DEV
+    MERCURE_CONFIG_FOLDER: /opt/mercure/config
+    REDIS_URL: redis://redis:6379/0
+
+x-volumes: &volumes
+  volumes:
+    - code:/opt/mercure/app
+    - config:/opt/mercure/config
+    - data:/opt/mercure/data
+
+x-volumes-docker: &volumes-docker
+  volumes:
+    - code:/opt/mercure/app
+    - config:/opt/mercure/config
+    - data:/opt/mercure/data
+    - /var/run/docker.sock:/var/run/docker.sock
+
+services:
+  receiver:
+    image: mercureimaging/mercure-receiver${IMAGE_TAG}
+    <<: *env
+    <<: *volumes
+
+  ui:
+    image: mercureimaging/mercure-ui${IMAGE_TAG}
+    <<: *env
+    <<: *volumes-docker
+
+  cleaner:
+    image: mercureimaging/mercure-cleaner${IMAGE_TAG}
+    <<: *env
+    <<: *volumes
+
+  dispatcher:
+    image: mercureimaging/mercure-dispatcher${IMAGE_TAG}
+    <<: *env
+    <<: *volumes
+      
+  processor:
+    image: mercureimaging/mercure-processor${IMAGE_TAG}
+    <<: *env  
+    <<: *volumes-docker
+
+  router:
+    image: mercureimaging/mercure-router${IMAGE_TAG}
+    <<: *env
+    <<: *volumes
+
+  bookkeeper:
+    image: mercureimaging/mercure-bookkeeper${IMAGE_TAG}
+    <<: *env
+    <<: *volumes
+
+  worker_fast:
+    image: mercureimaging/mercure-worker${IMAGE_TAG}
+    restart: always
+    depends_on:
+      - redis
+    deploy:
+      replicas: 2
+    environment:
+      WORKER_QUEUE: mercure_fast
+      REDIS_URL: redis://redis:6379/0
+    <<: *volumes
+
+  worker_slow:
+    image: mercureimaging/mercure-worker${IMAGE_TAG}
+    restart: always
+    depends_on:
+      - redis
+    deploy:
+      replicas: 2
+    environment:
+      WORKER_QUEUE: mercure_slow
+      REDIS_URL: redis://redis:6379/0
+    <<: *volumes
+
+
+volumes:
+  db-data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/opt/mercure/db'
+      
+  code:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: 'MERCURE_SRC'
+
+  data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/opt/mercure/data'
+
+  config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/opt/mercure/config'

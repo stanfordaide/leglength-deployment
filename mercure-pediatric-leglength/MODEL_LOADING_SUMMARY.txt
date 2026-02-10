@@ -1,0 +1,111 @@
+================================================================================
+MODEL LOADING IMPLEMENTATION SUMMARY
+================================================================================
+
+OVERVIEW:
+---------
+Extended the pediatric leg length inference module to support models trained
+with different detection head architectures, specifically:
+1. Standard Faster R-CNN (faster_rcnn)
+2. Faster R-CNN with specialized keypoint head (faster_rcnn_keypoint_head)
+
+The system automatically detects which model type to use based on checkpoint
+metadata or model naming conventions.
+
+SUPPORTED MODELS IN REGISTRY:
+------------------------------
+1. resnet50_kp_head          - ResNet50 with keypoint head
+2. convnext_small_kp_head    - ConvNeXt Small with keypoint head
+3. convnext_base             - ConvNeXt Base (standard Faster R-CNN)
+4. vit_l_16                  - Vision Transformer Large (standard Faster R-CNN)
+
+KEY IMPLEMENTATION DETAILS:
+----------------------------
+
+1. NEW FILES CREATED:
+   - leglength/training_models.py
+     Contains simplified versions of training code model classes:
+     * KeypointDetector: Standard Faster R-CNN
+     * FasterRCNNWithKeypointHead: Keypoint head wrapper
+     * KeypointDetectorWithSpecializedHead: Full keypoint head model
+     
+   - leglength/model_loader.py
+     Unified model loader that:
+     * Reads checkpoint metadata (detection_head_type, backbone)
+     * Auto-detects model type from naming if metadata missing
+     * Instantiates correct model class
+     * Loads weights and returns model instance
+
+2. MODIFIED FILES:
+   - leglength/detector.py
+     * Updated load_checkpoint() to use new unified loader
+     * Kept existing predict() method for inference
+     
+   - run.py
+     * Updated validate_config() to dynamically load valid models from registry.json
+     * No hardcoded model lists
+
+3. CHECKPOINT METADATA:
+   Checkpoints saved by training code contain:
+   {
+     'model_state_dict': {...},
+     'metadata': {
+       'detection_head_type': 'faster_rcnn' or 'faster_rcnn_keypoint_head',
+       'backbone': 'resnet50', 'convnext_base', 'convnext_small', 'vit_l_16',
+       'preprocessing_config': {...}
+     }
+   }
+
+4. AUTO-DETECTION LOGIC:
+   If metadata['detection_head_type'] is missing:
+   - Check model name for suffixes: '_kp_head', '_keypoint_head', '_kphead'
+   - If found → 'faster_rcnn_keypoint_head'
+   - Otherwise → 'faster_rcnn'
+
+5. INFERENCE BEHAVIOR:
+   At inference time, both model types return standard Faster R-CNN predictions:
+   {
+     'boxes': [...],
+     'scores': [...],
+     'labels': [...]
+   }
+   
+   The keypoint head model's specialized refinement is only used during training.
+   At inference, it simply wraps the base Faster R-CNN and returns its predictions.
+
+SUPPORTED BACKBONES:
+--------------------
+- resnet50
+- convnext_tiny, convnext_small, convnext_base, convnext_large
+- vit_b_16, vit_b_32, vit_l_16, vit_l_32
+
+FUTURE EXTENSIBILITY:
+---------------------
+The model_loader.py is designed to easily add support for:
+- faster_rcnn_heatmap: Faster R-CNN with heatmap head
+- heatmap_offset: Pure heatmap+offset detector
+- hierarchical_heatmap: Two-stage hierarchical heatmap detector
+
+These currently fallback to standard Faster R-CNN with a warning.
+
+TESTING:
+--------
+To test model loading:
+1. Build Docker image: docker build -t stanfordaide/pediatric-leglength .
+2. Run inference with task.json containing:
+   {
+     "process": {
+       "settings": {
+         "models": ["resnet50_kp_head", "convnext_base", "convnext_small_kp_head", "vit_l_16"]
+       }
+     }
+   }
+3. Check logs for successful model loading messages
+
+COMPATIBILITY:
+--------------
+- PyTorch 2.6+ compatible (uses weights_only=False for torch.load)
+- Backward compatible with existing standard Faster R-CNN models
+- Forward compatible with future detection head types
+
+================================================================================

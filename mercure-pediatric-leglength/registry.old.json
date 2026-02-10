@@ -1,0 +1,9 @@
+{
+  "m1": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/chosen/resnet50-adncti.pth",
+  "m2": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/chosen/resnet50-adkpncti.pth",
+  "m3": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/chosen/resnet50-adkp.pth",
+  "resnet50_kp_head": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/n815/resnet50-kp_head.pth",
+  "convnext_base": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.2.0/convnext_base.pth",
+  "convnext_small_kp_head": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.3.0/n815/convnext_small-kp_head.pth",
+  "vit_l_16": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.2.0/vit_l_16.pth"
+} 

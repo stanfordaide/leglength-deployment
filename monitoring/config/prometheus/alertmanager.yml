@@ -1,0 +1,44 @@
+# config/prometheus/alertmanager.yml
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alertmanager@lpch-monitoring.local'
+
+route:
+  group_by: ['alertname', 'severity', 'component']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'web.hook'
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+
+receivers:
+  - name: 'web.hook'
+    webhook_configs:
+      # Replace with your Slack webhook URL
+      - url: '${SLACK_WEBHOOK_URL}'
+        send_resolved: true
+
+  - name: 'critical-alerts'
+    webhook_configs:
+      # Replace with your Slack webhook URL for critical alerts
+      - url: '${SLACK_WEBHOOK_URL}'
+        send_resolved: true
+
+  - name: 'warning-alerts'
+    webhook_configs:
+      # Replace with your Slack webhook URL for warnings
+      - url: '${SLACK_WEBHOOK_URL}'
+        send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'component']
