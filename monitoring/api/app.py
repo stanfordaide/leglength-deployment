@@ -1434,7 +1434,7 @@ def sync_workflows_from_mercure():
             print(f"[SYNC] Creating workflow for {study_id} (UID: {study_uid})", flush=True)
             workflow_cur.execute("""
                 INSERT INTO study_workflows (
-                    study_id, study_uid, patient_name, study_description,
+                    study_id, study_instance_uid, patient_name, study_description,
                     mercure_sent_at, mercure_send_success,
                     ai_results_received, ai_results_received_at,
                     created_at, updated_at
