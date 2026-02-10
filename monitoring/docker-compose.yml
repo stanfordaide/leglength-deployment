@@ -13,8 +13,6 @@
 #   - 9039: Graphite Pickle
 #   - 9040: StatsD
 
-version: "3.8"
-
 services:
   # =============================================================================
   # WORKFLOW MONITORING (from orthanc routing-api)
