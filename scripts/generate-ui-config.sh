@@ -27,8 +27,8 @@ window.RADWATCH_CONFIG = {
     orthancUrl: window.location.protocol + '//' + window.location.host + '/orthanc',
     orthancWebUrl: window.location.protocol + '//' + window.location.host + '/orthanc',
     
-    // OHIF Viewer (via Orthanc proxy)
-    ohifUrl: window.location.protocol + '//' + window.location.host + '/orthanc/ohif/',
+    // OHIF Viewer (via Orthanc proxy at /ohif/viewer)
+    ohifUrl: window.location.protocol + '//' + window.location.host + '/ohif/viewer',
     
     // Grafana for metrics/dashboards
     // Extract hostname from window.location.host (removes port)
