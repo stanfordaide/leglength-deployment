@@ -459,8 +459,9 @@ def track_start():
         ON CONFLICT (study_id) DO UPDATE SET
             patient_name = COALESCE(EXCLUDED.patient_name, study_workflows.patient_name),
             study_description = COALESCE(EXCLUDED.study_description, study_workflows.study_description),
+            study_instance_uid = COALESCE(EXCLUDED.study_instance_uid, study_workflows.study_instance_uid),
             updated_at = NOW()
-    """, (study_id, data.get('study_uid'), data.get('patient_name'), data.get('study_description')))
+    """, (study_id, data.get('study_instance_uid'), data.get('patient_name'), data.get('study_description')))
     
     conn.commit()
     cur.close()
