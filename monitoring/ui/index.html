@@ -1116,6 +1116,20 @@ function dashboard() {
             this.loading = true;
             this.lastUpdate = new Date().toLocaleTimeString();
             
+            // First, sync workflows from Mercure (if database was reset or data lost)
+            try {
+                const syncResponse = await fetch(`${this.apiBaseUrl}/workflows/sync`, {
+                    method: 'POST',
+                    credentials: 'include',
+                });
+                if (!syncResponse.ok) {
+                    console.warn(`Workflow sync returned ${syncResponse.status}`);
+                }
+            } catch (e) {
+                console.warn('Workflow sync failed (non-fatal):', e);
+                // Don't fail the entire refresh if sync fails
+            }
+            
             await Promise.allSettled([
                 this.loadStats(),
                 this.loadDestinations(),
