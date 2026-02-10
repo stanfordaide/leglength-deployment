@@ -1,179 +1,267 @@
 # Pediatric Leg Length AI - Deployment Makefile
 # Master orchestration for all components
+#
+# PATTERN:
+#   Services (orthanc, mercure, monitoring): start, stop, restart, status, logs, shell
+#   Build artifacts (ai): build, test, push, clean, info
 
-.PHONY: help status start stop restart logs setup setup-config init clean mercure-install
+.PHONY: help status start-all stop-all restart-all \
+        orthanc-start orthanc-stop orthanc-restart orthanc-status orthanc-logs orthanc-shell orthanc-validate \
+        mercure-start mercure-stop mercure-restart mercure-status mercure-logs mercure-shell \
+        monitoring-start monitoring-stop monitoring-restart monitoring-status monitoring-logs \
+        ai-build ai-test ai-push ai-clean ai-info \
+        init setup setup-config clean clean-all ps
 
-# Colors for output
-CYAN := \033[36m
-GREEN := \033[32m
-YELLOW := \033[33m
-RED := \033[31m
-RESET := \033[0m
-
-help:
-	@echo "$(CYAN)Pediatric Leg Length AI - Deployment$(RESET)"
-	@echo ""
-	@echo "$(GREEN)Master Commands:$(RESET)"
-	@echo "  make status          - Show status of all services"
-	@echo "  make start-all       - Start all components"
-	@echo "  make stop-all        - Stop all components"
-	@echo ""
-	@echo "$(GREEN)Individual Components:$(RESET)"
-	@echo "  make orthanc-start   - Start Orthanc PACS"
-	@echo "  make orthanc-stop    - Stop Orthanc PACS"
-	@echo "  make orthanc-logs    - Show Orthanc logs"
-	@echo ""
-	@echo "  make mercure-install - Install Mercure (first time)"
-	@echo "  make mercure-start   - Start Mercure orchestrator"
-	@echo "  make mercure-stop    - Stop Mercure orchestrator"
-	@echo "  make mercure-logs    - Show Mercure logs"
-	@echo ""
-	@echo "  make ai-build        - Build AI module Docker image"
-	@echo ""
-	@echo "  make monitoring-start - Start monitoring stack"
-	@echo "  make monitoring-stop  - Stop monitoring stack"
-	@echo "  make monitoring-logs  - Show monitoring logs"
-	@echo ""
-	@echo "$(GREEN)Setup (run in order):$(RESET)"
-	@echo "  make init            - Create config.env from template"
-	@echo "  nano config.env      - Edit passwords and paths"
-	@echo "  make setup           - Generate all component configs"
-	@echo ""
-	@echo "$(GREEN)Component Setup:$(RESET)"
-	@echo "  make setup-orthanc   - Setup Orthanc directories"
-	@echo "  make setup-mercure   - Setup Mercure"
-	@echo "  make setup-ai        - Setup AI module"
-	@echo "  make setup-monitoring - Setup monitoring"
+# Colors
+CYAN    := \033[36m
+GREEN   := \033[32m
+YELLOW  := \033[33m
+RED     := \033[31m
+BOLD    := \033[1m
+RESET   := \033[0m
 
 # =============================================================================
-# STATUS
+# HELP
+# =============================================================================
+
+help:
+	@echo "$(BOLD)$(CYAN)Pediatric Leg Length AI - Deployment$(RESET)"
+	@echo ""
+	@echo "$(BOLD)Global Commands:$(RESET)"
+	@echo "  make status            Show status of all services"
+	@echo "  make start-all         Start all components"
+	@echo "  make stop-all          Stop all components"
+	@echo "  make restart-all       Restart all components"
+	@echo "  make ps                Show running containers"
+	@echo ""
+	@echo "$(BOLD)Services (start/stop/restart/status/logs/shell):$(RESET)"
+	@echo ""
+	@echo "  $(GREEN)Orthanc$(RESET) - DICOM PACS Server"
+	@echo "    make orthanc-start   Start Orthanc"
+	@echo "    make orthanc-stop    Stop Orthanc"
+	@echo "    make orthanc-restart Restart Orthanc"
+	@echo "    make orthanc-status  Check Orthanc health"
+	@echo "    make orthanc-logs    View Orthanc logs"
+	@echo "    make orthanc-shell   Shell into Orthanc container"
+	@echo "    make orthanc-validate Check Orthanc config"
+	@echo ""
+	@echo "  $(GREEN)Mercure$(RESET) - AI Job Orchestrator"
+	@echo "    make mercure-start   Start Mercure"
+	@echo "    make mercure-stop    Stop Mercure"
+	@echo "    make mercure-restart Restart Mercure"
+	@echo "    make mercure-status  Check Mercure health"
+	@echo "    make mercure-logs    View Mercure logs"
+	@echo "    make mercure-shell   Shell into Mercure container"
+	@echo ""
+	@echo "  $(GREEN)Monitoring$(RESET) - Grafana, Prometheus, Workflow UI"
+	@echo "    make monitoring-start   Start monitoring stack"
+	@echo "    make monitoring-stop    Stop monitoring stack"
+	@echo "    make monitoring-restart Restart monitoring stack"
+	@echo "    make monitoring-status  Check monitoring health"
+	@echo "    make monitoring-logs    View monitoring logs"
+	@echo ""
+	@echo "$(BOLD)AI Module (build/test/push/clean/info):$(RESET)"
+	@echo "    make ai-build        Build Docker image"
+	@echo "    make ai-test         Test model loading"
+	@echo "    make ai-push         Push to registry"
+	@echo "    make ai-clean        Remove old images"
+	@echo "    make ai-info         Show image info"
+	@echo ""
+	@echo "$(BOLD)Setup (run in order):$(RESET)"
+	@echo "    make init            Create config.env from template"
+	@echo "    nano config.env      Edit passwords and paths"
+	@echo "    make setup           Generate all component configs"
+	@echo ""
+	@echo "$(BOLD)Cleanup:$(RESET)"
+	@echo "    make clean           Stop containers, keep data"
+	@echo "    make clean-all       $(RED)DANGER$(RESET) Remove everything"
+
+# =============================================================================
+# GLOBAL COMMANDS
 # =============================================================================
 
 status:
-	@echo "$(CYAN)====== SERVICE STATUS ======$(RESET)"
+	@echo "$(BOLD)$(CYAN)═══════════════════════════════════════════════════════════════$(RESET)"
+	@echo "$(BOLD)$(CYAN)                      SERVICE STATUS                           $(RESET)"
+	@echo "$(BOLD)$(CYAN)═══════════════════════════════════════════════════════════════$(RESET)"
 	@echo ""
-	@echo "$(GREEN)Orthanc:$(RESET)"
-	@cd orthanc && docker compose ps 2>/dev/null || echo "  Not configured"
+	@echo "$(BOLD)$(GREEN)▸ Orthanc$(RESET)"
+	@cd orthanc && docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  Not running"
 	@echo ""
-	@echo "$(GREEN)Mercure:$(RESET)"
-	@cd mercure/docker && docker compose ps 2>/dev/null || echo "  Not configured"
+	@echo "$(BOLD)$(GREEN)▸ Mercure$(RESET)"
+	@cd /opt/mercure && docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  Not running"
 	@echo ""
-	@echo "$(GREEN)Monitoring:$(RESET)"
-	@cd monitoring && docker compose ps 2>/dev/null || echo "  Not configured"
+	@echo "$(BOLD)$(GREEN)▸ Monitoring$(RESET)"
+	@cd monitoring && docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  Not running"
 	@echo ""
-	@echo "$(GREEN)AI Module:$(RESET)"
-	@docker images stanfordaide/pediatric-leglength --format "  Image: {{.Repository}}:{{.Tag}} ({{.Size}})" 2>/dev/null || echo "  Not built"
+	@echo "$(BOLD)$(GREEN)▸ AI Module$(RESET)"
+	@docker images stanfordaide/pediatric-leglength --format "  {{.Repository}}:{{.Tag}}  ({{.Size}}, created {{.CreatedSince}})" 2>/dev/null || echo "  Image not built"
+	@echo ""
 
-# =============================================================================
-# ALL COMPONENTS
-# =============================================================================
+start-all: monitoring-start orthanc-start mercure-start
+	@echo ""
+	@echo "$(GREEN)✅ All services started!$(RESET)"
+	@echo ""
+	@echo "Access points:"
+	@echo "  Orthanc Dashboard:  http://localhost:9010"
+	@echo "  Orthanc Web:        http://localhost:9011"
+	@echo "  OHIF Viewer:        http://localhost:9012"
+	@echo "  Mercure:            http://localhost:9020"
+	@echo "  Workflow UI:        http://localhost:9030"
+	@echo "  Grafana:            http://localhost:9032"
 
-start-all: orthanc-start mercure-start monitoring-start
-	@echo "$(GREEN)All services started!$(RESET)"
-
-stop-all: monitoring-stop mercure-stop orthanc-stop
+stop-all: mercure-stop orthanc-stop monitoring-stop
 	@echo "$(YELLOW)All services stopped.$(RESET)"
 
+restart-all: stop-all start-all
+
+ps:
+	@docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus" --filter "name=monitoring" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
 # =============================================================================
-# ORTHANC
+# ORTHANC - DICOM PACS Server
 # =============================================================================
 
 orthanc-start:
-	@echo "$(CYAN)Starting Orthanc (full setup)...$(RESET)"
+	@echo "$(CYAN)Starting Orthanc...$(RESET)"
 	@cd orthanc && sudo make setup && sudo make start && sudo make seed-modalities
-	@echo "$(GREEN)Orthanc started!$(RESET)"
+	@echo "$(GREEN)✅ Orthanc started$(RESET)"
 
 orthanc-stop:
 	@echo "$(YELLOW)Stopping Orthanc...$(RESET)"
 	@cd orthanc && sudo docker compose down
+	@echo "$(YELLOW)Orthanc stopped$(RESET)"
+
+orthanc-restart: orthanc-stop orthanc-start
+
+orthanc-status:
+	@echo "$(CYAN)Orthanc Status:$(RESET)"
+	@cd orthanc && docker compose ps
+	@echo ""
+	@echo "$(CYAN)Health Check:$(RESET)"
+	@curl -sf http://localhost:9011/system 2>/dev/null | jq -r '"  Version: \(.Version)\n  DICOM AET: \(.DicomAet)\n  Storage: \(.StorageSize) bytes"' || echo "  $(RED)Not responding$(RESET)"
 
 orthanc-logs:
-	@cd orthanc && docker compose logs -f
+	@cd orthanc && docker compose logs -f --tail=100
 
 orthanc-shell:
 	@cd orthanc && docker compose exec orthanc bash
 
-setup-orthanc:
-	@echo "$(CYAN)Setting up Orthanc...$(RESET)"
-	@cd orthanc && make setup
+orthanc-validate:
+	@echo "$(CYAN)Validating Orthanc configuration...$(RESET)"
+	@cd orthanc && make validate
 
 # =============================================================================
-# MERCURE
+# MERCURE - AI Job Orchestrator
 # =============================================================================
-
-mercure-install: mercure-start
 
 mercure-start:
-	@echo "$(CYAN)Starting Mercure (full install)...$(RESET)"
+	@echo "$(CYAN)Starting Mercure...$(RESET)"
 	@chmod +x scripts/install-mercure.sh
 	@./scripts/install-mercure.sh -y
-	@echo "$(GREEN)Mercure started!$(RESET)"
+	@echo "$(GREEN)✅ Mercure started$(RESET)"
 
 mercure-stop:
 	@echo "$(YELLOW)Stopping Mercure...$(RESET)"
-	@cd /opt/mercure && sudo docker compose down
+	@cd /opt/mercure && sudo docker compose down 2>/dev/null || echo "Mercure not running"
+	@echo "$(YELLOW)Mercure stopped$(RESET)"
+
+mercure-restart: mercure-stop mercure-start
+
+mercure-status:
+	@echo "$(CYAN)Mercure Status:$(RESET)"
+	@cd /opt/mercure && docker compose ps 2>/dev/null || echo "  Not running"
+	@echo ""
+	@echo "$(CYAN)Health Check:$(RESET)"
+	@curl -sf http://localhost:9020/api/status 2>/dev/null && echo "  $(GREEN)Responding$(RESET)" || echo "  $(RED)Not responding$(RESET)"
 
 mercure-logs:
-	@cd mercure/docker && docker compose logs -f
+	@cd /opt/mercure && docker compose logs -f --tail=100
 
-setup-mercure:
-	@echo "$(CYAN)Setting up Mercure...$(RESET)"
-	@echo "Run 'make mercure-install' to install Mercure"
+mercure-shell:
+	@cd /opt/mercure && docker compose exec mercure_ui bash
 
 # =============================================================================
-# AI MODULE
+# MONITORING - Grafana, Prometheus, Workflow UI
 # =============================================================================
+
+monitoring-start:
+	@echo "$(CYAN)Starting Monitoring stack...$(RESET)"
+	@cd monitoring && docker compose up -d
+	@echo "$(GREEN)✅ Monitoring started$(RESET)"
+
+monitoring-stop:
+	@echo "$(YELLOW)Stopping Monitoring stack...$(RESET)"
+	@cd monitoring && docker compose down
+	@echo "$(YELLOW)Monitoring stopped$(RESET)"
+
+monitoring-restart: monitoring-stop monitoring-start
+
+monitoring-status:
+	@echo "$(CYAN)Monitoring Status:$(RESET)"
+	@cd monitoring && docker compose ps
+	@echo ""
+	@echo "$(CYAN)Service Health:$(RESET)"
+	@curl -sf http://localhost:9032/api/health 2>/dev/null && echo "  Grafana:    $(GREEN)OK$(RESET)" || echo "  Grafana:    $(RED)DOWN$(RESET)"
+	@curl -sf http://localhost:9033/-/healthy 2>/dev/null && echo "  Prometheus: $(GREEN)OK$(RESET)" || echo "  Prometheus: $(RED)DOWN$(RESET)"
+	@curl -sf http://localhost:9031/health 2>/dev/null && echo "  Workflow API: $(GREEN)OK$(RESET)" || echo "  Workflow API: $(RED)DOWN$(RESET)"
+
+monitoring-logs:
+	@cd monitoring && docker compose logs -f --tail=100
+
+# =============================================================================
+# AI MODULE - Docker Image (Build Artifact)
+# =============================================================================
+
+AI_IMAGE := stanfordaide/pediatric-leglength
+AI_TAG   := latest
 
 ai-build:
 	@echo "$(CYAN)Building AI module...$(RESET)"
-	@cd mercure-pediatric-leglength && docker build -t stanfordaide/pediatric-leglength:latest .
-	@echo "$(GREEN)AI module built successfully!$(RESET)"
+	@cd mercure-pediatric-leglength && docker build -t $(AI_IMAGE):$(AI_TAG) .
+	@echo "$(GREEN)✅ AI module built: $(AI_IMAGE):$(AI_TAG)$(RESET)"
 
 ai-test:
 	@echo "$(CYAN)Testing AI module...$(RESET)"
 	@cd mercure-pediatric-leglength && python test_model_loading.py
+	@echo "$(GREEN)✅ AI module tests passed$(RESET)"
 
-setup-ai:
-	@echo "$(CYAN)Setting up AI module...$(RESET)"
-	@cd mercure-pediatric-leglength && pip install -r requirements.txt
-	@cd mercure-pediatric-leglength && python download_models.py
+ai-push:
+	@echo "$(CYAN)Pushing AI module to registry...$(RESET)"
+	@docker push $(AI_IMAGE):$(AI_TAG)
+	@echo "$(GREEN)✅ Pushed $(AI_IMAGE):$(AI_TAG)$(RESET)"
 
-# =============================================================================
-# MONITORING
-# =============================================================================
+ai-clean:
+	@echo "$(YELLOW)Removing old AI images...$(RESET)"
+	@docker images $(AI_IMAGE) -q | xargs -r docker rmi -f 2>/dev/null || true
+	@docker image prune -f --filter "label=maintainer=stanfordaide"
+	@echo "$(YELLOW)AI images cleaned$(RESET)"
 
-monitoring-start:
-	@echo "$(CYAN)Starting Monitoring...$(RESET)"
-	@cd monitoring && docker compose up -d
-
-monitoring-stop:
-	@echo "$(YELLOW)Stopping Monitoring...$(RESET)"
-	@cd monitoring && docker compose down
-
-monitoring-logs:
-	@cd monitoring && docker compose logs -f
-
-setup-monitoring:
-	@echo "$(CYAN)Setting up Monitoring...$(RESET)"
-	@cd monitoring && make setup
+ai-info:
+	@echo "$(CYAN)AI Module Info:$(RESET)"
+	@docker images $(AI_IMAGE) --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"
+	@echo ""
+	@echo "$(CYAN)Models in registry.json:$(RESET)"
+	@cat mercure-pediatric-leglength/registry.json | jq -r 'keys[]' | while read m; do echo "  • $$m"; done
 
 # =============================================================================
-# SETUP ALL
+# SETUP
 # =============================================================================
 
-# Create config.env from template (one-time)
 init:
 	@if [ -f config.env ]; then \
-		echo "$(YELLOW)config.env already exists. Edit it or delete to recreate.$(RESET)"; \
+		echo "$(YELLOW)config.env already exists.$(RESET)"; \
+		echo "Edit it or delete to recreate from template."; \
 	else \
 		cp config.env.template config.env; \
 		chmod 600 config.env; \
-		echo "$(GREEN)Created config.env$(RESET)"; \
+		echo "$(GREEN)✅ Created config.env$(RESET)"; \
 		echo ""; \
-		echo "$(YELLOW)Next: Edit config.env with your passwords, then run 'make setup'$(RESET)"; \
+		echo "$(BOLD)Next steps:$(RESET)"; \
+		echo "  1. Edit config.env with your passwords"; \
+		echo "  2. Run 'make setup' to generate component configs"; \
 	fi
 
-# Generate all component configs from config.env
 setup: setup-config
 
 setup-config:
@@ -183,28 +271,30 @@ setup-config:
 		exit 1; \
 	fi
 	@./scripts/setup-config.sh
+	@echo "$(GREEN)✅ All configs generated from config.env$(RESET)"
 
 # =============================================================================
-# UTILITIES
+# CLEANUP
 # =============================================================================
 
 clean:
-	@echo "$(RED)WARNING: This will stop and remove all containers!$(RESET)"
-	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	@cd orthanc && docker compose down -v 2>/dev/null || true
-	@cd mercure/docker && docker compose down -v 2>/dev/null || true
-	@cd monitoring && docker compose down -v 2>/dev/null || true
-	@echo "$(YELLOW)Cleaned.$(RESET)"
+	@echo "$(YELLOW)This will stop all containers (data preserved).$(RESET)"
+	@read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	@cd orthanc && docker compose down 2>/dev/null || true
+	@cd /opt/mercure && sudo docker compose down 2>/dev/null || true
+	@cd monitoring && docker compose down 2>/dev/null || true
+	@echo "$(GREEN)✅ All containers stopped. Data preserved.$(RESET)"
 
-# Complete wipe - removes ALL data, configs, images, volumes
 clean-all:
 	@echo "$(RED)╔══════════════════════════════════════════════════════════════╗$(RESET)"
-	@echo "$(RED)║  WARNING: This will PERMANENTLY DELETE everything:           ║$(RESET)"
-	@echo "$(RED)║  - All containers, images, and volumes                       ║$(RESET)"
-	@echo "$(RED)║  - Mercure installation (/opt/mercure)                       ║$(RESET)"
-	@echo "$(RED)║  - Orthanc data and PostgreSQL                               ║$(RESET)"
-	@echo "$(RED)║  - All generated config files                                ║$(RESET)"
+	@echo "$(RED)║  ⚠️  DANGER: This will PERMANENTLY DELETE everything:        ║$(RESET)"
+	@echo "$(RED)║                                                              ║$(RESET)"
+	@echo "$(RED)║    • All containers, images, and volumes                    ║$(RESET)"
+	@echo "$(RED)║    • Mercure installation (/opt/mercure)                    ║$(RESET)"
+	@echo "$(RED)║    • Orthanc data and PostgreSQL                            ║$(RESET)"
+	@echo "$(RED)║    • All generated config files                             ║$(RESET)"
 	@echo "$(RED)╚══════════════════════════════════════════════════════════════╝$(RESET)"
+	@echo ""
 	@read -p "Type 'DELETE' to confirm: " confirm && [ "$$confirm" = "DELETE" ] || exit 1
 	@echo ""
 	@echo "$(YELLOW)Stopping services...$(RESET)"
@@ -233,15 +323,8 @@ clean-all:
 	@echo "$(GREEN)✅ Complete cleanup done!$(RESET)"
 	@echo ""
 	@echo "To start fresh:"
-	@echo "  git pull"
 	@echo "  make init"
 	@echo "  nano config.env"
 	@echo "  make setup"
-	@echo "  make monitoring-start"
-	@echo "  make orthanc-start"
-	@echo "  make mercure-start"
+	@echo "  make start-all"
 	@echo "  make ai-build"
-
-# Show all docker containers related to this deployment
-ps:
-	@docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus"
