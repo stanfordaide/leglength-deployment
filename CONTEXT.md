@@ -49,7 +49,6 @@ leglength-deployment/
 | | Routing API | 9014 |
 | | **DICOM** | **4242** |
 | **Mercure** | Web UI | 9020 |
-| | Bookkeeper | 9021 |
 | | PostgreSQL | 9022 |
 | **Monitoring** | Workflow UI | 9030 |
 | | Workflow API | 9031 |
