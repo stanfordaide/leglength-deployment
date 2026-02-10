@@ -136,13 +136,6 @@ services:
       - DB_NAME=orthanc
       - DB_USER=${POSTGRES_USER:-orthanc}
       - DB_PASS=${POSTGRES_PASSWORD:-ChangeThisPassword}
-      # Mercure Database connection (optional - for AI processing status)
-      # Leave MERCURE_DB_HOST empty to disable Mercure integration
-      - MERCURE_DB_HOST=${MERCURE_DB_HOST:-}
-      - MERCURE_DB_PORT=${MERCURE_DB_PORT:-9022}
-      - MERCURE_DB_NAME=mercure
-      - MERCURE_DB_USER=mercure
-      - MERCURE_DB_PASS=${MERCURE_DB_PASS:-}
       # Orthanc connection (for job polling)
       - ORTHANC_URL=http://orthanc:8042
       - ORTHANC_USER=${ORTHANC_USERNAME:-orthanc_admin}
@@ -156,8 +149,6 @@ services:
       # routing-api should start before orthanc so Lua can call it
     networks:
       - default
-    extra_hosts:
-      - "host.docker.internal:host-gateway"  # For Mercure DB connection
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
