@@ -128,6 +128,28 @@ envsubst '${ORTHANC_AET} ${ORTHANC_DB_USER} ${ORTHANC_DB_PASS} ${ORTHANC_ADMIN_U
 echo -e "  ${GREEN}✓${NC} orthanc/config/orthanc.json created"
 
 # =============================================================================
+# Generate Orthanc Lua config.lua (from template)
+# =============================================================================
+echo -e "${CYAN}Generating orthanc/lua-scripts-v2/config.lua...${NC}"
+
+CONFIG_LUA_TEMPLATE="$REPO_ROOT/orthanc/lua-scripts-v2/config.lua.template"
+CONFIG_LUA_OUTPUT="$REPO_ROOT/orthanc/lua-scripts-v2/config.lua"
+
+if [ ! -f "$CONFIG_LUA_TEMPLATE" ]; then
+    echo -e "  ${RED}✗${NC} Template not found: $CONFIG_LUA_TEMPLATE"
+    exit 1
+fi
+
+# Use envsubst to replace WORKFLOW_API_URL in template
+export WORKFLOW_API_URL
+
+envsubst '${WORKFLOW_API_URL}' \
+    < "$CONFIG_LUA_TEMPLATE" \
+    > "$CONFIG_LUA_OUTPUT"
+
+echo -e "  ${GREEN}✓${NC} orthanc/lua-scripts-v2/config.lua created"
+
+# =============================================================================
 # Generate Mercure db.env (for pre-installation)
 # =============================================================================
 echo -e "${CYAN}Generating mercure config for installation...${NC}"
@@ -257,6 +279,7 @@ echo ""
 echo "Generated files:"
 echo "  • orthanc/.env"
 echo "  • orthanc/config/orthanc.json"
+echo "  • orthanc/lua-scripts-v2/config.lua"
 echo "  • mercure/config-generated/db.env"
 echo "  • mercure/config-generated/install.env"
 echo "  • monitoring/.env"
