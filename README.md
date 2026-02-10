@@ -162,19 +162,20 @@ All services use the **9000 series** for easy management:
 | | OHIF Viewer | 9012 |
 | | PostgreSQL | 9013 |
 | | Routing API | 9014 |
-| | Grafana | 9015 |
 | | DICOM | 4242 |
 | **Mercure (9020s)** | Web UI | 9020 |
 | | Bookkeeper | 9021 |
 | **Monitoring (9030s)** | Workflow UI | 9030 |
 | | Workflow API | 9031 |
-| | Grafana | 9032 |
+| | **Grafana** | **9032** |
 | | Prometheus | 9033 |
 | | Alertmanager | 9034 |
 | | Node Exporter | 9035 |
 | | cAdvisor | 9036 |
 | | Pushgateway | 9037 |
 | | Graphite | 9038 |
+
+> **Note:** All Grafana dashboards (Orthanc QI, Mercure, Infrastructure) are consolidated in the monitoring stack at port **9032**.
 
 ## Configuration
 

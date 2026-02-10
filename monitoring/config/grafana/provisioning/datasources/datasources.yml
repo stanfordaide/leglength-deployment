@@ -25,17 +25,35 @@ datasources:
     jsonData:
       graphiteVersion: "1.1"
 
-  # Workflow PostgreSQL - for direct SQL queries if needed
+  # Workflow PostgreSQL - workflow tracking database
   - name: Workflow-DB
     type: postgres
     url: workflow-db:5432
     database: workflow_tracking
     user: workflow
     secureJsonData:
-      password: workflow123
+      password: ${WORKFLOW_DB_PASS}
     jsonData:
       sslmode: disable
       maxOpenConns: 5
       maxIdleConns: 2
       connMaxLifetime: 14400
+    editable: false
+
+  # Orthanc PostgreSQL - routing stats & study workflows
+  # NOTE: Connect via host network since Orthanc runs in separate compose stack
+  - name: Orthanc-DB
+    uid: orthanc-postgres
+    type: postgres
+    url: ${ORTHANC_DB_HOST:-host.docker.internal}:${ORTHANC_DB_PORT:-9013}
+    database: orthanc
+    user: ${ORTHANC_DB_USER:-orthanc}
+    secureJsonData:
+      password: ${ORTHANC_DB_PASS}
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1500
     editable: false
