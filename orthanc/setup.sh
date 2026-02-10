@@ -63,10 +63,13 @@ DEFAULT_MERCURE_DB_NAME="${MERCURE_DB_NAME:-mercure}"
 DEFAULT_MERCURE_DB_USER="${MERCURE_DB_USER:-mercure}"
 DEFAULT_MERCURE_DB_PASS="${MERCURE_DB_PASS:-}"
 
-# Clear working variables
+# Clear working variables (except GRAFANA_* which are optional since Grafana moved to monitoring stack)
 unset DICOM_STORAGE POSTGRES_STORAGE GRAFANA_STORAGE ORTHANC_AET ORTHANC_PASSWORD ORTHANC_USERNAME
 unset POSTGRES_USER POSTGRES_PASSWORD OPERATOR_UI_PORT ORTHANC_WEB_PORT OHIF_PORT
-unset POSTGRES_PORT ROUTING_API_PORT GRAFANA_PORT DICOM_PORT TZ GRAFANA_USER GRAFANA_PASSWORD
+unset POSTGRES_PORT ROUTING_API_PORT GRAFANA_PORT DICOM_PORT TZ
+# Set Grafana defaults (Grafana is now in monitoring stack, but keep these for backwards compat)
+GRAFANA_USER="${DEFAULT_GRAFANA_USER:-admin}"
+GRAFANA_PASSWORD="${DEFAULT_GRAFANA_PASSWORD:-admin}"
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # OVERLAY USER CONFIG FROM .env (if exists - this takes precedence!)
