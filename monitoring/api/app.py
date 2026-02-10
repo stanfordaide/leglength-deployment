@@ -1366,11 +1366,13 @@ def sync_workflows_from_mercure():
         # First, build a map of StudyInstanceUID -> study_id from Orthanc
         orthanc_studies = {}
         try:
+            print(f"[SYNC] Querying Orthanc at {orthanc_api_url}/studies", flush=True)
             resp = requests.get(
                 f"{orthanc_api_url}/studies",
                 auth=orthanc_auth,
                 timeout=5
             )
+            print(f"[SYNC] Orthanc response status: {resp.status_code}", flush=True)
             if resp.status_code == 200:
                 study_ids = resp.json()  # Array of study IDs (strings)
                 print(f"[SYNC] Found {len(study_ids)} studies in Orthanc", flush=True)
@@ -1392,6 +1394,8 @@ def sync_workflows_from_mercure():
                                 print(f"[SYNC] Orthanc study: {study_uid} -> {study_id}", flush=True)
                     except requests.RequestException as e:
                         print(f"[SYNC] Error fetching Orthanc study {study_id}: {e}", flush=True)
+            else:
+                print(f"[SYNC] Orthanc returned status {resp.status_code}: {resp.text}", flush=True)
         except requests.RequestException as e:
             print(f"[SYNC] Can't reach Orthanc: {e}", flush=True)
             return jsonify({'error': f'Cannot reach Orthanc: {str(e)}'}), 503
