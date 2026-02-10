@@ -1,7 +1,7 @@
 # Pediatric Leg Length AI - Deployment Makefile
 # Master orchestration for all components
 
-.PHONY: help status start stop restart logs setup setup-config init clean
+.PHONY: help status start stop restart logs setup setup-config init clean mercure-install
 
 # Colors for output
 CYAN := \033[36m
@@ -23,6 +23,7 @@ help:
 	@echo "  make orthanc-stop    - Stop Orthanc PACS"
 	@echo "  make orthanc-logs    - Show Orthanc logs"
 	@echo ""
+	@echo "  make mercure-install - Install Mercure (first time)"
 	@echo "  make mercure-start   - Start Mercure orchestrator"
 	@echo "  make mercure-stop    - Stop Mercure orchestrator"
 	@echo "  make mercure-logs    - Show Mercure logs"
@@ -99,6 +100,11 @@ setup-orthanc:
 # MERCURE
 # =============================================================================
 
+mercure-install:
+	@echo "$(CYAN)Installing Mercure...$(RESET)"
+	@chmod +x scripts/install-mercure.sh
+	@./scripts/install-mercure.sh -y
+
 mercure-start:
 	@echo "$(CYAN)Starting Mercure...$(RESET)"
 	@cd mercure/docker && docker compose up -d
@@ -112,7 +118,7 @@ mercure-logs:
 
 setup-mercure:
 	@echo "$(CYAN)Setting up Mercure...$(RESET)"
-	@echo "Please follow Mercure's installation instructions in mercure/README.md"
+	@echo "Run 'make mercure-install' to install Mercure"
 
 # =============================================================================
 # AI MODULE
