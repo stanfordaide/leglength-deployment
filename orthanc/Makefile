@@ -53,12 +53,13 @@ help:
 	@echo "  make restore FILE=path      Restore from backup file"
 	@echo "  make backup-list            List available backups"
 	@echo ""
-	@echo "PORTS (defaults)"
-	@echo "  8040  Operator Dashboard"
-	@echo "  8041  Orthanc Web UI / API"
-	@echo "  8042  OHIF Viewer"
-	@echo "  8044  Routing API"
-	@echo "  8045  Grafana QI Dashboards"
+	@echo "PORTS (defaults - 9010 series)"
+	@echo "  9010  Operator Dashboard"
+	@echo "  9011  Orthanc Web UI / API"
+	@echo "  9012  OHIF Viewer"
+	@echo "  9013  PostgreSQL"
+	@echo "  9014  Routing API"
+	@echo "  9015  Grafana QI Dashboards"
 	@echo "  4242  DICOM"
 	@echo ""
 	@echo "EXAMPLES"
@@ -111,9 +112,9 @@ start:
 	@docker compose up -d
 	@echo "✅ Services started"
 	@echo ""
-	@echo "  Dashboard: http://localhost:$${OPERATOR_UI_PORT:-8040}"
-	@echo "  Orthanc:   http://localhost:$${ORTHANC_WEB_PORT:-8041}"
-	@echo "  OHIF:      http://localhost:$${OHIF_PORT:-8042}"
+	@echo "  Dashboard: http://localhost:$${OPERATOR_UI_PORT:-9010}"
+	@echo "  Orthanc:   http://localhost:$${ORTHANC_WEB_PORT:-9011}"
+	@echo "  OHIF:      http://localhost:$${OHIF_PORT:-9012}"
 
 stop:
 	@docker compose stop

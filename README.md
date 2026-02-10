@@ -58,9 +58,10 @@ make start
 ```
 
 **Access:**
-- Workflow UI: http://localhost:9080
-- Grafana: http://localhost:9000 (`admin` / `admin123`)
-- Prometheus: http://localhost:9090
+- Workflow UI: http://localhost:9030
+- Workflow API: http://localhost:9031
+- Grafana: http://localhost:9032 (`admin` / `admin123`)
+- Prometheus: http://localhost:9033
 
 ### 2. Orthanc (DICOM Server)
 
@@ -73,9 +74,9 @@ make start
 ```
 
 **Access:**
-- Operator Dashboard: http://localhost:8040
-- Orthanc Web UI: http://localhost:8041 (`orthanc_admin` / `helloaide123`)
-- OHIF Viewer: http://localhost:8042
+- Operator Dashboard: http://localhost:9010
+- Orthanc Web UI: http://localhost:9011 (`orthanc_admin` / `helloaide123`)
+- OHIF Viewer: http://localhost:9012
 - DICOM Port: 4242
 
 ### 3. Mercure (Job Dispatcher)
@@ -152,21 +153,28 @@ make ai-build
 
 ## Port Reference
 
+All services use the **9000 series** for easy management:
+
 | Component | Service | Port |
 |-----------|---------|------|
-| **Orthanc** | Operator UI | 8040 |
-| | Orthanc Web | 8041 |
-| | OHIF Viewer | 8042 |
-| | PostgreSQL | 8043 |
-| | Routing API | 8044 |
-| | Grafana | 8045 |
+| **Orthanc (9010s)** | Operator UI | 9010 |
+| | Orthanc Web | 9011 |
+| | OHIF Viewer | 9012 |
+| | PostgreSQL | 9013 |
+| | Routing API | 9014 |
+| | Grafana | 9015 |
 | | DICOM | 4242 |
-| **Mercure** | Web UI | 8000 |
-| **Monitoring** | Workflow UI | 9080 |
-| | Workflow API | 9044 |
-| | Grafana | 9000 |
-| | Prometheus | 9090 |
-| | Graphite | 2003 |
+| **Mercure (9020s)** | Web UI | 9020 |
+| | Bookkeeper | 9021 |
+| **Monitoring (9030s)** | Workflow UI | 9030 |
+| | Workflow API | 9031 |
+| | Grafana | 9032 |
+| | Prometheus | 9033 |
+| | Alertmanager | 9034 |
+| | Node Exporter | 9035 |
+| | cAdvisor | 9036 |
+| | Pushgateway | 9037 |
+| | Graphite | 9038 |
 
 ## Configuration
 
@@ -184,7 +192,7 @@ make seed-modalities    # Adds default destinations including MERCURE
 Edit `orthanc/lua-scripts-v2/config.lua`:
 
 ```lua
-CONFIG.TRACKING_API_URL = "http://localhost:9044"
+CONFIG.TRACKING_API_URL = "http://localhost:9031"
 ```
 
 ### Mercure → Graphite Metrics
@@ -194,7 +202,7 @@ Edit `/opt/mercure/config/mercure.json`:
 ```json
 {
   "graphite_ip": "localhost",
-  "graphite_port": 2003
+  "graphite_port": 9038
 }
 ```
 

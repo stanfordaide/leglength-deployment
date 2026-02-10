@@ -2,12 +2,13 @@
 # ORTHANC PACS - Docker Compose Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# Services:
-#   - operator-ui  : Operator Dashboard (port 8040)
-#   - orthanc      : PACS Server + API (port 8041, DICOM 4242)
-#   - ohif         : DICOM Viewer (port 8042)
-#   - orthanc-db   : PostgreSQL Database (port 8043)
-#   - routing-api  : Routing Statistics API (port 8044)
+# PORT SCHEME (9010 series for Orthanc):
+#   - operator-ui  : Operator Dashboard (port 9010)
+#   - orthanc      : PACS Server + API (port 9011, DICOM 4242)
+#   - ohif         : DICOM Viewer (port 9012)
+#   - orthanc-db   : PostgreSQL Database (port 9013)
+#   - routing-api  : Routing Statistics API (port 9014)
+#   - grafana      : QI Dashboards (port 9015)
 #
 # Quick start:
 #   cp config/env.template .env
@@ -26,7 +27,7 @@ services:
     image: nginx:alpine
     container_name: orthanc-operator-ui
     ports:
-      - "${OPERATOR_UI_PORT:-8040}:80"
+      - "${OPERATOR_UI_PORT:-9010}:80"
     volumes:
       - ./ui:/usr/share/nginx/html:ro
       - ./ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -52,7 +53,7 @@ services:
     secrets:
       - orthanc.json
     ports:
-      - "${ORTHANC_WEB_PORT:-8041}:8042"
+      - "${ORTHANC_WEB_PORT:-9011}:8042"
       - "${DICOM_PORT:-4242}:4242"
     volumes:
       # Mount Lua scripts (v2 - modular)
@@ -83,7 +84,7 @@ services:
     image: mercureimaging/ohif
     container_name: orthanc-ohif
     ports:
-      - "${OHIF_PORT:-8042}:80"
+      - "${OHIF_PORT:-9012}:80"
     volumes:
       - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     environment:
@@ -104,7 +105,7 @@ services:
     image: postgres:15
     container_name: orthanc-postgres
     ports:
-      - "${POSTGRES_PORT:-8043}:5432"
+      - "${POSTGRES_PORT:-9013}:5432"
     environment:
       - POSTGRES_DB=orthanc
       - POSTGRES_USER=${POSTGRES_USER:-orthanc}
@@ -128,7 +129,7 @@ services:
     build: ./api
     container_name: orthanc-routing-api
     ports:
-      - "${ROUTING_API_PORT:-8044}:5000"
+      - "${ROUTING_API_PORT:-9014}:5000"
     environment:
       # Orthanc Database connection
       - DB_HOST=orthanc-db
@@ -171,7 +172,7 @@ services:
     image: grafana/grafana:latest
     container_name: orthanc-grafana
     ports:
-      - "${GRAFANA_PORT:-8045}:3000"
+      - "${GRAFANA_PORT:-9015}:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}

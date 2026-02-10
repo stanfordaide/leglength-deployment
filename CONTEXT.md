@@ -65,22 +65,25 @@ leglength-deployment/
 - **Prometheus** (port 9090): Metrics collection
 - **Graphite** (port 2003): Mercure native metrics
 
-## Port Assignments
+## Port Assignments (9000 Series)
 
 | Component | Service | Port |
 |-----------|---------|------|
-| **Orthanc** | Operator UI | 8040 |
-| | Orthanc Web | 8041 |
-| | OHIF Viewer | 8042 |
-| | PostgreSQL | 8043 |
-| | Routing API | 8044 |
-| | Grafana | 8045 |
+| **Orthanc (9010s)** | Operator UI | 9010 |
+| | Orthanc Web | 9011 |
+| | OHIF Viewer | 9012 |
+| | PostgreSQL | 9013 |
+| | Routing API | 9014 |
+| | Grafana | 9015 |
 | | DICOM | 4242 |
-| **Monitoring** | Workflow UI | 9080 |
-| | Workflow API | 9044 |
-| | Grafana | 9000 |
-| | Prometheus | 9090 |
-| | Graphite | 2003 |
+| **Mercure (9020s)** | Web UI | 9020 |
+| | Bookkeeper | 9021 |
+| **Monitoring (9030s)** | Workflow UI | 9030 |
+| | Workflow API | 9031 |
+| | Grafana | 9032 |
+| | Prometheus | 9033 |
+| | Alertmanager | 9034 |
+| | Graphite | 9038 |
 
 ## Credentials
 

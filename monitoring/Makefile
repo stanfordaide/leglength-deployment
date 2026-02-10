@@ -46,9 +46,9 @@ start:
 	docker compose up -d
 	@echo ""
 	@echo "Services starting. Access:"
-	@echo "  Workflow UI: http://localhost:$${WORKFLOW_UI_PORT:-8080}"
-	@echo "  Grafana:     http://localhost:$${GRAFANA_PORT:-3000}"
-	@echo "  Prometheus:  http://localhost:$${PROMETHEUS_PORT:-9090}"
+	@echo "  Workflow UI: http://localhost:$${WORKFLOW_UI_PORT:-9030}"
+	@echo "  Grafana:     http://localhost:$${GRAFANA_PORT:-9032}"
+	@echo "  Prometheus:  http://localhost:$${PROMETHEUS_PORT:-9033}"
 
 # Stop services
 stop:
@@ -73,9 +73,9 @@ status:
 	@docker compose ps
 	@echo ""
 	@echo "=== Health Checks ==="
-	@echo "Workflow API: $$(curl -s http://localhost:$${WORKFLOW_API_PORT:-8044}/health 2>/dev/null || echo 'unreachable')"
-	@echo "Prometheus:   $$(curl -s http://localhost:$${PROMETHEUS_PORT:-9090}/-/healthy 2>/dev/null || echo 'unreachable')"
-	@echo "Grafana:      $$(curl -s http://localhost:$${GRAFANA_PORT:-3000}/api/health 2>/dev/null | head -c 50 || echo 'unreachable')"
+	@echo "Workflow API: $$(curl -s http://localhost:$${WORKFLOW_API_PORT:-9031}/health 2>/dev/null || echo 'unreachable')"
+	@echo "Prometheus:   $$(curl -s http://localhost:$${PROMETHEUS_PORT:-9033}/-/healthy 2>/dev/null || echo 'unreachable')"
+	@echo "Grafana:      $$(curl -s http://localhost:$${GRAFANA_PORT:-9032}/api/health 2>/dev/null | head -c 50 || echo 'unreachable')"
 
 # Build containers
 build:
