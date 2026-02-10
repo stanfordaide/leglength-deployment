@@ -2,179 +2,248 @@
 
 Complete deployment package for the pediatric leg length measurement AI pipeline.
 
-## Architecture Overview
+## Architecture
 
 ```
-                                    ┌─────────────────────────────┐
-                                    │       MONITORING            │
-                                    │  ┌─────────┐ ┌──────────┐  │
-                                    │  │ Grafana │ │ Workflow │  │
-                                    │  │         │ │    UI    │  │
-                                    │  └────┬────┘ └────┬─────┘  │
-                                    │       │          │         │
-                                    │  ┌────┴──────────┴─────┐   │
-                                    │  │     Prometheus      │   │
-                                    │  │     Graphite        │   │
-                                    │  └──────────┬──────────┘   │
-                                    └─────────────┼──────────────┘
-                                                  │
-           ┌──────────────────────────────────────┼───────────────────────────────────┐
-           │                                      │                                   │
-           ▼                                      ▼                                   ▼
-┌─────────────────────┐              ┌─────────────────────┐              ┌─────────────────────┐
-│      ORTHANC        │              │      MERCURE        │              │    AI MODULE        │
-│  ┌───────────────┐  │              │  ┌───────────────┐  │              │  ┌───────────────┐  │
-│  │  DICOM Server │  │   DICOM      │  │  Dispatcher   │  │   Process    │  │  Leg Length   │  │
-│  │               │──┼──────────────┼─▶│               │──┼──────────────┼─▶│   Detector    │  │
-│  │  Lua Routing  │  │              │  │  Job Queue    │  │              │  │               │  │
-│  │               │◀─┼──────────────┼──│               │◀─┼──────────────┼──│  PyTorch      │  │
-│  └───────────────┘  │   Results    │  └───────────────┘  │   Results    │  └───────────────┘  │
-│                     │              │                     │              │                     │
-│  Port: 4242 (DICOM) │              │  Port: 8000 (Web)   │              │  (Docker container) │
-│  Port: 8042 (Web)   │              │                     │              │                     │
-└─────────────────────┘              └─────────────────────┘              └─────────────────────┘
+┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+│     ORTHANC     │      │     MERCURE     │      │   AI MODULE     │
+│                 │      │                 │      │                 │
+│  DICOM Server   │─────▶│  Job Queue      │─────▶│  Leg Length     │
+│  Lua Routing    │◀─────│  Dispatcher     │◀─────│  Detector       │
+│                 │      │                 │      │  (PyTorch)      │
+└────────┬────────┘      └────────┬────────┘      └─────────────────┘
+         │                        │
+         │     Events/Metrics     │
+         ▼                        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         MONITORING                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │ Workflow UI  │  │   Grafana    │  │  Prometheus  │              │
+│  │ (RADWATCH)   │  │  (metrics)   │  │  (collect)   │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Components
 
 | Directory | Description | README |
 |-----------|-------------|--------|
-| `orthanc/` | DICOM PACS server with intelligent routing | [→](orthanc/README.md) |
+| `orthanc/` | DICOM PACS server with Lua routing | [→](orthanc/README.md) |
 | `mercure/` | DICOM orchestration platform | [→](mercure/README.md) |
-| `mercure-pediatric-leglength/` | AI processing module | [→](mercure-pediatric-leglength/README.md) |
+| `mercure-pediatric-leglength/` | AI processing module (PyTorch) | [→](mercure-pediatric-leglength/README.md) |
 | `monitoring/` | Grafana, Prometheus, workflow dashboard | [→](monitoring/README.md) |
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
+- **OS**: RHEL 8/9 (for Mercure installer) or any Linux with Docker
+- **Docker** & Docker Compose v2
+- **RAM**: 16GB+ recommended
+- **GPU**: Optional, improves AI inference speed
 
-- Docker & Docker Compose
-- 16GB+ RAM recommended
-- GPU recommended for AI inference (but not required)
+## Setup Order
 
-### 1. Setup Each Component
+Components should be started in this order due to dependencies:
+
+```
+1. Monitoring  →  2. Orthanc  →  3. Mercure  →  4. AI Module
+```
+
+### 1. Monitoring (Event Sink)
 
 ```bash
-# Setup Orthanc (PACS)
-cd orthanc
-make setup
-# Edit .env as needed
+cd monitoring
+make setup          # Creates .env and data directories
+# Edit .env if needed
 make start
+```
 
-# Setup Mercure (orchestrator)  
-cd ../mercure
-# Follow mercure setup instructions
-docker compose -f docker/docker-compose.yml up -d
+**Access:**
+- Workflow UI: http://localhost:9080
+- Grafana: http://localhost:9000 (`admin` / `admin123`)
+- Prometheus: http://localhost:9090
+
+### 2. Orthanc (DICOM Server)
+
+```bash
+cd orthanc
+make menu           # Interactive setup wizard (recommended)
+# OR for scripted setup:
+make setup DICOM_STORAGE=/path/to/dicom POSTGRES_STORAGE=/path/to/db
+make start
+```
+
+**Access:**
+- Operator Dashboard: http://localhost:8040
+- Orthanc Web UI: http://localhost:8041 (`orthanc_admin` / `helloaide123`)
+- OHIF Viewer: http://localhost:8042
+- DICOM Port: 4242
+
+### 3. Mercure (Job Dispatcher)
+
+```bash
+cd mercure
+sudo ./install_rhel_v2.sh -y    # Full installation
+
+# After install, services are at /opt/mercure
+# Manage with:
+sudo /opt/mercure/mercure-manager.sh status
+sudo /opt/mercure/mercure-manager.sh start
+sudo /opt/mercure/mercure-manager.sh stop
+```
+
+**Access:**
+- Mercure Web UI: http://localhost:8000
+
+### 4. AI Module (Docker Image)
+
+```bash
+# From repo root
+make ai-build       # Builds mercure-pediatric-leglength:latest
+```
+
+The AI module runs as a Docker container managed by Mercure. Register it in Mercure's module configuration.
+
+## Quick Commands
+
+From the repository root:
+
+```bash
+# Status of all services
+make status
+
+# Start/stop all (after initial setup)
+make start-all
+make stop-all
+
+# Individual components
+make orthanc-start      make orthanc-stop      make orthanc-logs
+make mercure-start      make mercure-stop      make mercure-logs
+make monitoring-start   make monitoring-stop   make monitoring-logs
 
 # Build AI module
-cd ../mercure-pediatric-leglength
-docker build -t mercure-pediatric-leglength:latest .
-# Register in Mercure's module config
-
-# Setup Monitoring
-cd ../monitoring
-make setup
-# Edit .env to point to Orthanc/Mercure
-make start
-```
-
-### 2. Configure Connections
-
-#### Orthanc → Mercure
-Edit `orthanc/config/orthanc.json` to add Mercure as a DICOM destination.
-
-#### Orthanc → Monitoring
-Configure Lua scripts to send events to monitoring API:
-```lua
--- In orthanc/lua-scripts-v2/config.lua
-CONFIG.TRACKING_API_URL = "http://<monitoring-host>:8044"
-```
-
-#### Mercure → Monitoring
-Edit Mercure's `mercure.json`:
-```json
-{
-  "graphite_ip": "<monitoring-host>",
-  "graphite_port": 2003
-}
+make ai-build
 ```
 
 ## Data Flow
 
 ```
-1. DICOM study arrives at Orthanc (port 4242)
-          │
-          ▼
-2. Lua script analyzes study
+1. Study arrives at Orthanc (DICOM port 4242)
+        │
+        ▼
+2. Lua script analyzes:
    - Is it a bone length study?
    - Does it already have AI results?
-          │
-          ▼
-3. Route to Mercure (if needs processing)
-          │
-          ▼
-4. Mercure dispatches to AI module
-          │
-          ▼
-5. AI module processes, returns results
-          │
-          ▼
-6. Results sent back to Orthanc
-          │
-          ▼
-7. Lua detects AI results, routes to final destination
+        │
+        ▼
+3. Routes to Mercure if needs AI processing
+        │
+        ▼
+4. Mercure dispatches to AI module container
+        │
+        ▼
+5. AI processes: detects landmarks, measures leg length
+        │
+        ▼
+6. Results return to Orthanc as new DICOM series
+        │
+        ▼
+7. Lua detects AI results → routes to final destination (PACS)
 ```
 
-## Ports Reference
+## Port Reference
 
-| Service | Port | Protocol |
-|---------|------|----------|
-| **Orthanc** | | |
-| DICOM | 4242 | DICOM |
-| Web UI | 8042 | HTTP |
-| **Mercure** | | |
-| Web UI | 8000 | HTTP |
-| **Monitoring** | | |
-| Workflow UI | 8080 | HTTP |
-| Workflow API | 8044 | HTTP |
-| Grafana | 3000 | HTTP |
-| Prometheus | 9090 | HTTP |
-| Graphite | 2003 | Carbon |
+| Component | Service | Port |
+|-----------|---------|------|
+| **Orthanc** | Operator UI | 8040 |
+| | Orthanc Web | 8041 |
+| | OHIF Viewer | 8042 |
+| | PostgreSQL | 8043 |
+| | Routing API | 8044 |
+| | Grafana | 8045 |
+| | DICOM | 4242 |
+| **Mercure** | Web UI | 8000 |
+| **Monitoring** | Workflow UI | 9080 |
+| | Workflow API | 9044 |
+| | Grafana | 9000 |
+| | Prometheus | 9090 |
+| | Graphite | 2003 |
 
-## Development
+## Configuration
 
-Each component can be developed independently:
+### Orthanc → Mercure Connection
+
+Add Mercure as a DICOM modality in Orthanc:
 
 ```bash
-# Work on Orthanc Lua scripts
-cd orthanc/lua-scripts-v2
-# Changes are auto-loaded by Orthanc
-
-# Work on AI module
-cd mercure-pediatric-leglength
-python run.py input/ output/  # Local testing
-
-# Work on monitoring dashboard
-cd monitoring/ui
-# Edit index.html, refresh browser
+cd orthanc
+make seed-modalities    # Adds default destinations including MERCURE
 ```
+
+### Orthanc → Monitoring Events
+
+Edit `orthanc/lua-scripts-v2/config.lua`:
+
+```lua
+CONFIG.TRACKING_API_URL = "http://localhost:9044"
+```
+
+### Mercure → Graphite Metrics
+
+Edit `/opt/mercure/config/mercure.json`:
+
+```json
+{
+  "graphite_ip": "localhost",
+  "graphite_port": 2003
+}
+```
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `orthanc/lua-scripts-v2/config.lua` | Routing rules, AI detection patterns |
+| `orthanc/lua-scripts-v2/matcher.lua` | Study classification logic |
+| `orthanc/lua-scripts-v2/router.lua` | Routing actions |
+| `monitoring/api/app.py` | Workflow tracking API |
+| `monitoring/ui/index.html` | RADWATCH dashboard |
+| `mercure-pediatric-leglength/leglength/detector.py` | PyTorch model inference |
 
 ## Troubleshooting
 
 ### Study not being routed
+
 1. Check Orthanc logs: `cd orthanc && make logs`
-2. Verify Lua scripts are loaded: Check for "Loaded lua-scripts-v2" in logs
+2. Verify Lua scripts loaded: Look for "Loaded lua-scripts-v2" in logs
 3. Check matcher patterns in `orthanc/lua-scripts-v2/config.lua`
 
 ### AI processing failing
-1. Check Mercure queue: Access Mercure Web UI
-2. Check AI module logs: `docker logs mercure-processor`
+
+1. Check Mercure queue in Web UI
+2. Check AI container logs: `docker logs <container-id>`
 3. Verify GPU access if using CUDA
 
-### Monitoring not showing data
-1. Check if routing-api is receiving events: `cd monitoring && make logs LOGS_SERVICE=workflow-api`
-2. Verify Orthanc Lua is sending to correct URL
+### Monitoring not receiving events
+
+1. Check workflow-api logs: `cd monitoring && make logs LOGS_SERVICE=workflow-api`
+2. Verify Orthanc Lua is POSTing to correct URL
 3. Check network connectivity between containers
+
+## Development
+
+```bash
+# Orthanc Lua scripts (auto-reload)
+cd orthanc/lua-scripts-v2
+# Edit files, Orthanc reloads automatically
+
+# AI module (local testing)
+cd mercure-pediatric-leglength
+python run.py input/ output/
+
+# Monitoring dashboard
+cd monitoring/ui
+# Edit index.html, refresh browser
+```
 
 ## License
 
