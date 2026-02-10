@@ -165,6 +165,7 @@ All services use the **9000 series** for easy management:
 | | DICOM | 4242 |
 | **Mercure (9020s)** | Web UI | 9020 |
 | | Bookkeeper | 9021 |
+| | PostgreSQL | 9022 |
 | **Monitoring (9030s)** | Workflow UI | 9030 |
 | | Workflow API | 9031 |
 | | **Grafana** | **9032** |

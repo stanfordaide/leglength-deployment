@@ -43,7 +43,7 @@ services:
       POSTGRES_DB: mercure
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "15432:5432"
+      - "9022:5432"  # Mercure DB - 9020 series
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
