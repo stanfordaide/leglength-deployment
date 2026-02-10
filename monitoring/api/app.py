@@ -913,32 +913,6 @@ def get_funnel():
                 'status': 'success' if (stats['sent_to_mercure'] or 0) > 0 else 'neutral'
             },
             
-            # PROCESSING STAGE (Mercure)
-            {
-                'stage': 'PROCESSING',
-                'name': 'Received at Mercure',
-                'count': stats['mercure_received'] or 0,
-                'percent': pct(stats['mercure_received'] or 0, stats['sent_to_mercure'] or 1),
-                'base_count': stats['sent_to_mercure'] or 0,
-                'status': 'success' if (stats['mercure_received'] or 0) > 0 else 'waiting'
-            },
-            {
-                'stage': 'PROCESSING',
-                'name': 'Processing at Mercure',
-                'count': stats['mercure_processing'] or 0,
-                'percent': pct(stats['mercure_processing'] or 0, stats['mercure_received'] or 1),
-                'base_count': stats['mercure_received'] or 0,
-                'status': 'success' if (stats['mercure_processing'] or 0) > 0 else 'waiting'
-            },
-            {
-                'stage': 'PROCESSING',
-                'name': 'Processing Completed',
-                'count': stats['mercure_completed'] or 0,
-                'percent': pct(stats['mercure_completed'] or 0, stats['mercure_processing'] or 1),
-                'base_count': stats['mercure_processing'] or 0,
-                'status': 'success' if (stats['mercure_completed'] or 0) > 0 else 'waiting'
-            },
-            
             # OUTPUT STAGE
             {
                 'stage': 'OUTPUT',
