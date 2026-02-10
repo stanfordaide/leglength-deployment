@@ -513,6 +513,33 @@ make workflow-sync
 
 ---
 
+---
+
+## Known Limitations
+
+### Mercure Processing Stage Tracking
+
+**Limitation:** The workflow UI cannot currently track intermediate Mercure processing stages (`processing_started_at`, `processing_completed_at`) even though it tracks:
+- ✅ When study arrives at Mercure (`mercure_received_at`)
+- ✅ When processing completes and results return
+- ✅ Complete end-to-end pipeline flow
+
+**Root Cause:** Mercure's Bookkeeper database doesn't populate `study_uid` in the tasks table. It only stores `series_uid` in JSON data, making correlation to our tracking database difficult without a series→study mapping.
+
+**Workaround:** The system tracks `mercure_received_at` from the `dicom_series` table, which works. Processing timestamps would require:
+- Mercure configuration changes to store study_uid
+- OR: Maintaining a series_uid → study_uid mapping table
+- OR: Using Mercure's REST API (if available in your version)
+
+**Impact:** The funnel visualization shows most stages correctly. Processing times are approximate (completion time minus received time).
+
+**Future:** If precise Mercure processing tracking becomes necessary, consider:
+1. Updating Mercure config to include study_uid
+2. Querying Mercure's REST API instead of database
+3. Having Mercure send webhooks on processing events
+
+---
+
 ## Summary
 
 **To make changes safely:**
