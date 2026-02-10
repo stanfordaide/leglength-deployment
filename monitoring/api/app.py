@@ -304,19 +304,16 @@ def enrich_workflows_from_mercure():
                     try:
                         bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
                         
-                        bookkeeper_cur.execute("""
-                            SELECT 
-                                te.event,
-                                te.time
-                            FROM task_events te
-                            JOIN tasks t ON te.task_id = t.id
-                            WHERE t.study_uid = %s
-                            ORDER BY te.time ASC
-                        """, (study_uid,))
+                        # NOTE: Mercure doesn't populate study_uid in tasks table
+                        # It only has series_uid in the JSON data field
+                        # We use dicom_series table instead for received_at timestamp
                         
-                        events = bookkeeper_cur.fetchall()
+                        events = []
+                        mercure_received_at = None
+                        processing_started = None
+                        processing_completed = None
                         
-                        # Also query for dicom_series received time
+                        # Query dicom_series for this study to get when it was received
                         bookkeeper_cur.execute("""
                             SELECT MIN(time) as received_at
                             FROM dicom_series
@@ -324,8 +321,13 @@ def enrich_workflows_from_mercure():
                         """, (study_uid,))
                         
                         series_info = bookkeeper_cur.fetchone()
-                        mercure_received_at = series_info['received_at'] if series_info else None
+                        if series_info and series_info['received_at']:
+                            mercure_received_at = series_info['received_at']
+                        
                         bookkeeper_cur.close()
+                        
+                        # For processing timestamps, we can't correlate without study_uid in tasks
+                        # Skip processing timestamp extraction for now
                     except Exception as bk_err:
                         # Rollback bookkeeper transaction if it failed
                         bookkeeper_conn.rollback()
