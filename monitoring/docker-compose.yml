@@ -24,6 +24,8 @@ services:
       dockerfile: Dockerfile
     container_name: workflow-api
     restart: unless-stopped
+    env_file:
+      - ./monitoring/.env
     ports:
       - "${WORKFLOW_API_PORT:-9031}:5000"
     environment:
