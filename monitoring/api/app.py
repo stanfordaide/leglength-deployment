@@ -524,10 +524,16 @@ def get_workflows():
     result = []
     for w in workflows:
         # Check if study still exists in Orthanc
+        # Use 172.17.0.1 (Docker host gateway on Linux) to reach Orthanc API
+        orthanc_api_url = os.environ.get('ORTHANC_API_URL', 'http://172.17.0.1:9011')
         try:
             resp = requests.get(
-                f"http://orthanc-server:8042/studies/{w['study_id']}",
-                timeout=2
+                f"{orthanc_api_url}/studies/{w['study_id']}",
+                timeout=2,
+                auth=(
+                    os.environ.get('ORTHANC_USERNAME', ''),
+                    os.environ.get('ORTHANC_PASSWORD', '')
+                )
             )
             if resp.status_code == 404:
                 # Study deleted from Orthanc, skip it
@@ -626,12 +632,18 @@ def get_funnel():
     all_studies = [row['study_id'] for row in cur.fetchall()]
     
     # Filter: only studies that still exist in Orthanc
+    # Use 172.17.0.1 (Docker host gateway on Linux) to reach Orthanc API
+    orthanc_api_url = os.environ.get('ORTHANC_API_URL', 'http://172.17.0.1:9011')
     existing_study_ids = []
     for study_id in all_studies:
         try:
             resp = requests.get(
-                f"http://orthanc-server:8042/studies/{study_id}",
-                timeout=2
+                f"{orthanc_api_url}/studies/{study_id}",
+                timeout=2,
+                auth=(
+                    os.environ.get('ORTHANC_USERNAME', ''),
+                    os.environ.get('ORTHANC_PASSWORD', '')
+                )
             )
             if resp.status_code == 200:
                 existing_study_ids.append(study_id)
