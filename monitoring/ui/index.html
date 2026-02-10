@@ -72,7 +72,7 @@
                 </div>
                 <div class="flex items-center gap-4 text-xs text-slate-500">
                     <a :href="orthancWebUrl" target="_blank" class="hover:text-slate-300 transition-colors">Orthanc UI →</a>
-                    <a :href="orthancWebUrl + '/ohif/'" target="_blank" class="hover:text-slate-300 transition-colors">OHIF Viewer →</a>
+                    <a :href="ohifUrl" target="_blank" class="hover:text-slate-300 transition-colors">OHIF Viewer →</a>
                     <a :href="grafanaUrl" target="_blank" class="hover:text-slate-300 transition-colors">Grafana →</a>
                 </div>
             </div>
@@ -415,7 +415,7 @@
                             <div class="text-2xl mb-1">🏥</div>
                             <div class="text-xs">Orthanc</div>
                         </a>
-                        <a :href="orthancWebUrl + '/ohif/'" target="_blank"
+                        <a :href="ohifUrl" target="_blank"
                            class="px-4 py-3 bg-midnight-700 rounded-lg hover:bg-midnight-600 border border-midnight-600 hover:border-neon-purple transition-all text-center">
                             <div class="text-2xl mb-1">🖼️</div>
                             <div class="text-xs">OHIF Viewer</div>
@@ -466,7 +466,7 @@
                                                         class="text-xs px-2 py-1 bg-midnight-600 rounded hover:bg-neon-blue hover:text-midnight-900 transition-all">
                                                     View
                                                 </button>
-                                                <a :href="orthancWebUrl + '/ohif/viewer?StudyInstanceUIDs=' + study.studyUid" 
+                                                <a :href="ohifUrl + '?StudyInstanceUIDs=' + study.studyUid" 
                                                    target="_blank"
                                                    class="text-xs px-2 py-1 bg-midnight-600 rounded hover:bg-neon-purple hover:text-white transition-all">
                                                     OHIF
@@ -732,7 +732,7 @@
                            class="flex-1 px-4 py-3 bg-midnight-700 rounded-lg hover:bg-neon-blue hover:text-midnight-900 transition-all text-center">
                             Open in Orthanc
                         </a>
-                        <a :href="orthancWebUrl + '/ohif/viewer?StudyInstanceUIDs=' + selectedStudy.studyUid"
+                        <a :href="ohifUrl + '?StudyInstanceUIDs=' + selectedStudy.studyUid"
                            target="_blank"
                            class="flex-1 px-4 py-3 bg-midnight-700 rounded-lg hover:bg-neon-purple hover:text-white transition-all text-center">
                             Open in OHIF
