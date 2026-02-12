@@ -250,13 +250,13 @@ def poll_pending_jobs():
 def enrich_workflows_from_mercure():
     """Background thread that enriches workflow records with Mercure processing status
     
-    Queries Bookkeeper for studies that were sent to Mercure but don't have 
-    processing timestamps yet, and fills in:
-    - mercure_received_at
-    - mercure_processing_started_at
-    - mercure_processing_completed_at
+    Two modes of operation:
+    1. PROACTIVE: Query Mercure for ALL studies received in the last hour.
+       This catches studies even if Orthanc failed to report them.
+    
+    2. REACTIVE: Fill in gaps for known studies (legacy logic).
     """
-    print(f"[MercureEnricher] Started - querying Bookkeeper every 30s")
+    print(f"[MercureEnricher] Started - polling Bookkeeper every 30s")
     
     while True:
         try:
@@ -266,6 +266,56 @@ def enrich_workflows_from_mercure():
                 time.sleep(30)
                 continue
             
+            # 1. PROACTIVE POLL: Get everything from Mercure in last 1h
+            try:
+                bk_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Get unique studies from last hour
+                bk_cur.execute("""
+                    SELECT DISTINCT ON (study_uid)
+                        study_uid,
+                        MIN(time) as received_at,
+                        MAX(tag_patientname) as patient_name,
+                        MAX(tag_studydescription) as study_description
+                    FROM dicom_series
+                    WHERE time > NOW() - INTERVAL '1 hour'
+                    GROUP BY study_uid
+                """)
+                
+                recent_studies = bk_cur.fetchall()
+                bk_cur.close()
+                
+                if recent_studies:
+                    print(f"[MercureEnricher] Found {len(recent_studies)} recent studies in Mercure")
+                    
+                    # Update our DB for each one
+                    wf_conn = get_db()
+                    wf_cur = wf_conn.cursor()
+                    
+                    for s in recent_studies:
+                        # We don't know the study_id (Orthanc ID) here, only the UID.
+                        # We update based on StudyInstanceUID.
+                        # If the study doesn't exist in our DB yet, we can't insert it 
+                        # because we need the Orthanc study_id as primary key.
+                        # But we CAN update existing records that match the UID.
+                        
+                        wf_cur.execute("""
+                            UPDATE study_workflows
+                            SET 
+                                mercure_received_at = COALESCE(mercure_received_at, %s),
+                                mercure_send_success = TRUE,
+                                updated_at = NOW()
+                            WHERE study_instance_uid = %s
+                        """, (s['received_at'], s['study_uid']))
+                        
+                    wf_conn.commit()
+                    wf_cur.close()
+                    wf_conn.close()
+                    
+            except Exception as e:
+                print(f"[MercureEnricher] Proactive poll failed: {e}")
+                
+            # 2. REACTIVE POLL: Fill in details for specific pending studies
             # Use a fresh connection for reading pending studies
             workflow_conn = get_db()
             workflow_cur = workflow_conn.cursor(cursor_factory=RealDictCursor)
