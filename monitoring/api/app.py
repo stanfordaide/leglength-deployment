@@ -271,10 +271,13 @@ def enrich_workflows_from_mercure():
             workflow_cur = workflow_conn.cursor(cursor_factory=RealDictCursor)
             
             # Find studies that were sent to Mercure but don't have full processing info
+            # Must have a valid study_instance_uid to query Bookkeeper
             workflow_cur.execute("""
                 SELECT study_id, study_instance_uid 
                 FROM study_workflows 
                 WHERE mercure_sent_at IS NOT NULL 
+                AND study_instance_uid IS NOT NULL 
+                AND study_instance_uid != ''
                 AND (mercure_received_at IS NULL 
                      OR mercure_processing_started_at IS NULL 
                      OR mercure_processing_completed_at IS NULL)
