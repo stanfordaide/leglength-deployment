@@ -121,7 +121,22 @@ fi
 # We need to export the variables for envsubst
 export ORTHANC_AET ORTHANC_DB_USER ORTHANC_DB_PASS ORTHANC_ADMIN_USER ORTHANC_ADMIN_PASS
 
-envsubst '${ORTHANC_AET} ${ORTHANC_DB_USER} ${ORTHANC_DB_PASS} ${ORTHANC_ADMIN_USER} ${ORTHANC_ADMIN_PASS}' \
+# Parse modalities for JSON
+# Input: AET|HOST|PORT
+# Output: [ "AET", "HOST", PORT ]
+format_modality() {
+    local val=$1
+    if [ -z "$val" ]; then echo "null"; return; fi
+    IFS='|' read -r aet host port <<< "$val"
+    echo "[ \"$aet\", \"$host\", $port ]"
+}
+
+export MODALITY_MERCURE_JSON=$(format_modality "$MODALITY_MERCURE")
+export MODALITY_LPCHROUTER_JSON=$(format_modality "$MODALITY_LPCHROUTER")
+export MODALITY_LPCHTROUTER_JSON=$(format_modality "$MODALITY_LPCHTROUTER")
+export MODALITY_MODLINK_JSON=$(format_modality "$MODALITY_MODLINK")
+
+envsubst '${ORTHANC_AET} ${ORTHANC_DB_USER} ${ORTHANC_DB_PASS} ${ORTHANC_ADMIN_USER} ${ORTHANC_ADMIN_PASS} ${MODALITY_MERCURE_JSON} ${MODALITY_LPCHROUTER_JSON} ${MODALITY_LPCHTROUTER_JSON} ${MODALITY_MODLINK_JSON}' \
     < "$ORTHANC_JSON_TEMPLATE" \
     > "$ORTHANC_JSON_OUTPUT"
 
