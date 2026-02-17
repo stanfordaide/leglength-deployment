@@ -250,6 +250,9 @@ STATSD_PORT=${STATSD_PORT}
 # Alerting
 SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
 SLACK_CHANNEL=${SLACK_CHANNEL}
+
+# Data Path for Harvester
+MONITORING_DATA_PATH=${MONITORING_DATA_PATH}
 EOF
 echo -e "  ${GREEN}✓${NC} monitoring/.env created"
 

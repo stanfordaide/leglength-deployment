@@ -245,9 +245,13 @@ monitoring-status:
 	@curl -sf http://localhost:9032/api/health 2>/dev/null && printf "  Grafana:    $(GREEN)OK$(RESET)\n" || printf "  Grafana:    $(RED)DOWN$(RESET)\n"
 	@curl -sf http://localhost:9033/-/healthy 2>/dev/null && printf "  Prometheus: $(GREEN)OK$(RESET)\n" || printf "  Prometheus: $(RED)DOWN$(RESET)\n"
 	@curl -sf http://localhost:9031/health 2>/dev/null && printf "  Workflow API: $(GREEN)OK$(RESET)\n" || printf "  Workflow API: $(RED)DOWN$(RESET)\n"
+	@cd monitoring && sudo docker compose ps harvester --format "{{.State}}" | grep -q "running" && printf "  Harvester:    $(GREEN)OK$(RESET)\n" || printf "  Harvester:    $(RED)DOWN$(RESET)\n"
 
 monitoring-logs:
 	@cd monitoring && sudo docker compose logs -f --tail=100
+
+harvester-logs:
+	@cd monitoring && sudo docker compose logs -f --tail=100 harvester
 
 monitoring-debug:
 	@printf "$(CYAN)Monitoring Debug Info:$(RESET)\n"

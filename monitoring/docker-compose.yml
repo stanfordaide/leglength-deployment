@@ -240,6 +240,24 @@ services:
     networks:
       - monitoring-net
 
+  # =============================================================================
+  # HARVESTER (ETL)
+  # =============================================================================
+  harvester:
+    build:
+      context: ./harvester
+      dockerfile: Dockerfile
+    container_name: harvester
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - MONITORING_DATA_PATH=/data/events
+    volumes:
+      - ${MONITORING_DATA_PATH:-/var/log/mercure/monitoring_events}:/data/events
+    networks:
+      - monitoring-net
+
 # =============================================================================
 # NETWORKS & VOLUMES
 # =============================================================================

@@ -10,6 +10,9 @@ import psutil
 import os
 import calendar
 import numpy as np
+import uuid
+
+from .events import MonitoringEvent, Metadata, Context, Timings, ModelPrediction, DerivedResults, Status, LegResults
 
 try:
     import torch
@@ -144,136 +147,10 @@ class MetricsCollector:
                                      models: List[str], 
                                      pixel_spacing: float) -> Dict[str, float]:
         """
-        Extract table-level quality features from individual model predictions.
-        
-        These features capture model agreement and prediction quality across all points.
-        Based on the feature extraction logic used in the decision tree analysis.
-        
-        Args:
-            individual_preds: Dictionary of individual model predictions
-            models: List of model names
-            pixel_spacing: Pixel to mm conversion factor
-            
-        Returns:
-            Dictionary of table-level quality features
+        DEPRECATED: Extract table-level quality features.
+        Retained for backward compatibility.
         """
-        features = {}
-        num_models = len(models)
-        
-        if num_models < 2 or not individual_preds:
-            # Return default values for single model or no predictions
-            return {
-                'mean_distance': 0.0,
-                'max_distance': 0.0,
-                'distance_std': 0.0,
-                'distance_cv': 0.0,
-                'overall_detection_rate': 0.0,
-                'detection_consistency': 1.0,
-                'missing_point_ratio': 1.0,
-                'high_distance_ratio': 0.0,
-                'extreme_distance_ratio': 0.0,
-                'model_agreement_rate': 1.0
-            }
-        
-        # Store all distances and detections
-        all_distances = []
-        point_distances = {}
-        point_detections = {}
-        
-        # Extract features for each anatomical point (1-8)
-        for point_id in range(8):
-            target_label = point_id + 1  # Convert to 1-based
-            point_distances[point_id] = []
-            point_detections[point_id] = []
-            
-            # Get detection flags for each model
-            for model_name in models:
-                model_pred = individual_preds.get(model_name, {})
-                predictions = model_pred.get('predictions', {})
-                boxes = predictions.get('boxes', [])
-                labels = predictions.get('labels', [])
-                
-                # Check if this point was detected
-                detected = 0
-                for j, label in enumerate(labels):
-                    if label == target_label and j < len(boxes):
-                        detected = 1
-                        break
-                
-                point_detections[point_id].append(detected)
-            
-            # Calculate pairwise distances for detected points
-            model_positions = {}
-            for i, model_name in enumerate(models):
-                if point_detections[point_id][i] == 1:  # Only if detected
-                    model_pred = individual_preds.get(model_name, {})
-                    predictions = model_pred.get('predictions', {})
-                    boxes = predictions.get('boxes', [])
-                    labels = predictions.get('labels', [])
-                    
-                    # Find the box for this point
-                    for j, label in enumerate(labels):
-                        if label == target_label and j < len(boxes):
-                            box = boxes[j]
-                            center = [(box[0] + box[2])/2, (box[1] + box[3])/2]
-                            model_positions[i] = center
-                            break
-            
-            # Calculate pairwise distances
-            for i in range(num_models):
-                for j in range(i+1, num_models):
-                    if i in model_positions and j in model_positions:
-                        pos1 = model_positions[i]
-                        pos2 = model_positions[j]
-                        distance_pixels = np.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
-                        distance_mm = distance_pixels * pixel_spacing
-                        point_distances[point_id].append(distance_mm)
-                        all_distances.append(distance_mm)
-                    else:
-                        # Missing distance - use sentinel value
-                        point_distances[point_id].append(999.0)
-                        all_distances.append(999.0)
-        
-        # Create feature set
-        # 1. Global distance statistics
-        valid_distances = [d for d in all_distances if d < 999.0]
-        if valid_distances:
-            features['mean_distance'] = float(np.mean(valid_distances))
-            features['max_distance'] = float(np.max(valid_distances))
-            features['distance_std'] = float(np.std(valid_distances))
-            features['distance_cv'] = float(np.std(valid_distances) / (np.mean(valid_distances) + 1e-6))
-        else:
-            features['mean_distance'] = 999.0
-            features['max_distance'] = 999.0
-            features['distance_std'] = 0.0
-            features['distance_cv'] = 0.0
-        
-        # 2. Detection quality metrics
-        all_detection_rates = [np.mean(detections) for detections in point_detections.values()]
-        features['overall_detection_rate'] = float(np.mean(all_detection_rates))
-        features['detection_consistency'] = float(1.0 - np.std(all_detection_rates))
-        
-        # 3. Missing data severity
-        total_points = len(point_detections)
-        missing_points = sum(1 for detections in point_detections.values() if np.sum(detections) == 0)
-        features['missing_point_ratio'] = float(missing_points / total_points)
-        
-        # 4. Distance distribution
-        if valid_distances:
-            features['high_distance_ratio'] = float(np.mean([d > 5.0 for d in valid_distances]))
-            features['extreme_distance_ratio'] = float(np.mean([d > 10.0 for d in valid_distances]))
-        else:
-            features['high_distance_ratio'] = 1.0
-            features['extreme_distance_ratio'] = 1.0
-        
-        # 5. Model agreement quality
-        if valid_distances:
-            agreement_threshold = 3.0  # mm
-            features['model_agreement_rate'] = float(np.mean([d <= agreement_threshold for d in valid_distances]))
-        else:
-            features['model_agreement_rate'] = 0.0
-        
-        return features
+        return {}
     
     def start_session(self, session_id: str, config: Dict[str, Any]) -> None:
         """
@@ -464,194 +341,128 @@ class MetricsCollector:
         
         return gpu_metrics
     
-    def get_influx_data(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_monitoring_event(self, session_id: str, status: str = 'completed') -> Optional[MonitoringEvent]:
         """
-        Format session data for InfluxDB using the new PLL schema.
+        Construct a MonitoringEvent from session data.
         
         Args:
             session_id: Session identifier
+            status: Final status of the session
             
         Returns:
-            List of InfluxDB-formatted metric dictionaries
+            MonitoringEvent or None if session not found
         """
         if session_id not in self.sessions:
-            return []
-        
+            return None
+            
         session = self.sessions[session_id]
-        influx_data = []
+        config = session.get('config', {})
+        dicom_path = session.get('dicom_path')
         
-        try:
-            config = session.get('config', {})
-            dicom_path = session.get('dicom_path')
-            completion_time = time.time()
+        # Extract DICOM metadata
+        dicom_metadata = {}
+        if dicom_path:
+            dicom_metadata = self._extract_dicom_metadata(dicom_path)
             
-            # Extract DICOM metadata
-            dicom_metadata = {}
-            if dicom_path:
-                dicom_metadata = self._extract_dicom_metadata(dicom_path)
-            
-            # Get temporal tags
-            temporal_tags = self._get_temporal_tags(completion_time)
-            
-            # AI model version (from config)
-            ai_model_version = '_'.join(config.get('models', ['unknown']))
-            
-            # Base tags for all measurements
-            base_tags = {
-                'patient_id': dicom_metadata.get('patient_id', 'unknown'),
-                'study_id': dicom_metadata.get('study_id', 'unknown'),
-                'series_id': dicom_metadata.get('series_id', 'unknown'),
-                'accession_number': dicom_metadata.get('accession_number', 'unknown'),
-                'patient_gender': dicom_metadata.get('patient_gender', 'unknown'),
-                'patient_age_group': dicom_metadata.get('patient_age_group', 'unknown'),
-                'scanner_manufacturer': dicom_metadata.get('scanner_manufacturer', 'unknown'),
-                'ai_model_version': ai_model_version,
-                **temporal_tags
-            }
-            
-            # Processing duration from timings
-            processing_duration_ms = 0
-            for timing in session.get('timings', {}).values():
-                processing_duration_ms += timing['duration'] * 1000  # Convert to ms
-            
-            # PLL AI Measurements
-            measurements = session.get('measurements', {})
-            if measurements:
-                for measurement_name, measurement_data in measurements.items():
-                    if isinstance(measurement_data, dict) and 'millimeters' in measurement_data:
-                        # Extract measurement confidence and uncertainty from performance data
-                        performance_data = session.get('performance_data', {})
-                        measurement_confidence = 0.0
-                        measurement_uncertainty_mm = 0.0
-                        
-                        # Calculate average confidence from uncertainties if available
-                        uncertainties = performance_data.get('uncertainties', {})
-                        if uncertainties:
-                            confidences = [u.get('confidence_mean', 0) for u in uncertainties.values()]
-                            if confidences:
-                                measurement_confidence = sum(confidences) / len(confidences)
-                            
-                            # Calculate average spatial uncertainty
-                            spatial_uncertainties = [u.get('spatial_uncertainty_mm', 0) for u in uncertainties.values()]
-                            if spatial_uncertainties:
-                                measurement_uncertainty_mm = sum(spatial_uncertainties) / len(spatial_uncertainties)
-                        
-                        influx_data.append({
-                            'measurement': 'pll_ai_measurements',
-                            'tags': {
-                                **base_tags,
-                                'measurement_type': measurement_name
-                            },
-                            'fields': {
-                                'patient_age': dicom_metadata.get('patient_age', 0),
-                                'measurement_value_mm': float(measurement_data['millimeters']),
-                                'processing_duration_ms': int(processing_duration_ms),
-                                'measurement_confidence': float(measurement_confidence),
-                                'measurement_uncertainty_mm': float(measurement_uncertainty_mm),
-                                'pixel_spacing': float(dicom_metadata.get('pixel_spacing', 0.0))
-                            },
-                            'time': datetime.fromtimestamp(completion_time)
-                        })
-            
-            # PLL AI Performance (per point)
-            performance_data = session.get('performance_data', {})
-            uncertainties = performance_data.get('uncertainties', {})
-            
-            for point_id, uncertainty_data in uncertainties.items():
-                influx_data.append({
-                    'measurement': 'pll_ai_performance',
-                    'tags': {
-                        **base_tags,
-                        'point_id': str(point_id)
-                    },
-                    'fields': {
-                        'weighted_x_mm': float(uncertainty_data.get('weighted_x_mm', 0)),
-                        'weighted_y_mm': float(uncertainty_data.get('weighted_y_mm', 0)),
-                        'detection_disagreement': float(uncertainty_data.get('detection_disagreement', 0)),
-                        'total_models': int(uncertainty_data.get('total_models', 0)),
-                        'localization_disagreement': float(uncertainty_data.get('localization_disagreement', 0)),
-                        'outlier_risk': float(uncertainty_data.get('outlier_risk', 0)),
-                        'spatial_uncertainty_mm': float(uncertainty_data.get('spatial_uncertainty_mm', 0)),
-                        'confidence_mean': float(uncertainty_data.get('confidence_mean', 0)),
-                        'confidence_std': float(uncertainty_data.get('confidence_std', 0)),
-                        'confidence_uncertainty': float(uncertainty_data.get('confidence_uncertainty', 0)),
-                        'num_models': int(uncertainty_data.get('num_models', 0)),
-                        'position_std_x_mm': float(uncertainty_data.get('position_std_x_mm', 0)),
-                        'position_std_y_mm': float(uncertainty_data.get('position_std_y_mm', 0))
-                    },
-                    'time': datetime.fromtimestamp(completion_time)
-                })
-            
-            # PLL AI Image-Level Metrics (including table-level quality features)
-            image_metrics = performance_data.get('image_metrics', {})
-            if image_metrics:
-                # Base image metrics fields
-                fields = {
-                    'image_dds': float(image_metrics.get('image_dds', 0.0)),
-                    'image_lds': float(image_metrics.get('image_lds', 0.0)),
-                    'image_ors': float(image_metrics.get('image_ors', 0.0)),
-                    'image_cds': float(image_metrics.get('image_cds', 0.0)),
-                    'processing_duration_ms': int(processing_duration_ms),
-                    'total_landmarks': len(uncertainties)
-                }
-                
-                # Extract table-level quality features from individual model predictions
-                individual_preds = performance_data.get('individual_model_predictions', {})
-                models = config.get('models', [])
-                pixel_spacing = dicom_metadata.get('pixel_spacing', 1.0)
-                
-                if individual_preds and len(models) > 1:
-                    try:
-                        table_features = self._extract_table_level_features(
-                            individual_preds, 
-                            models, 
-                            pixel_spacing
-                        )
-                        # Add table-level features to the fields
-                        fields.update(table_features)
-                        self.logger.debug(f"Added {len(table_features)} table-level quality features")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to extract table-level features: {e}")
-                        # Continue without table-level features
-                
-                influx_data.append({
-                    'measurement': 'pll_ai_image_metrics',
-                    'tags': base_tags,
-                    'fields': fields,
-                    'time': datetime.fromtimestamp(completion_time)
-                })
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to format InfluxDB data: {e}")
-            import traceback
-            self.logger.debug(traceback.format_exc())
-        
-        return influx_data
-    
-    def get_prometheus_data(self, session_id: str) -> Dict[str, Any]:
-        """
-        Format session data for Prometheus.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            Dictionary of Prometheus-formatted metrics
-        """
-        if session_id not in self.sessions:
-            return {}
-        
-        session = self.sessions[session_id]
-        prometheus_data = {
+        # 1. Metadata
+        metadata: Metadata = {
+            'event_id': str(uuid.uuid4()),
             'session_id': session_id,
-            'timings': session.get('timings', {}),
-            'model_metrics': session.get('model_metrics', {}),
-            'measurements': session.get('measurements', {}),
-            'system_metrics': session.get('system_metrics', []),
-            'custom_metrics': session.get('custom_metrics', [])
+            'timestamp': datetime.fromtimestamp(time.time()).isoformat(),
+            'app_version': '0.2.0',  # Ideally this should come from config or package
+            'model_version': '_'.join(config.get('models', ['unknown'])),
+            'config_snapshot': config
         }
         
-        return prometheus_data
+        # 2. Context
+        context: Context = {
+            'scanner_manufacturer': dicom_metadata.get('scanner_manufacturer', 'unknown'),
+            'pixel_spacing': [dicom_metadata.get('pixel_spacing', 0.0), dicom_metadata.get('pixel_spacing', 0.0)],
+            'image_size': [0, 0], # TODO: We need to capture image size
+            'patient_age_group': dicom_metadata.get('patient_age_group', 'unknown'),
+            'patient_sex': dicom_metadata.get('patient_gender', 'unknown'),
+            'study_id': dicom_metadata.get('study_id', 'unknown'),
+            'series_id': dicom_metadata.get('series_id', 'unknown'),
+            'accession_number': dicom_metadata.get('accession_number', 'unknown')
+        }
+        
+        # 3. Timings
+        timings_data = session.get('timings', {})
+        timings: Timings = {
+            'total_processing': timings_data.get('total_processing', {}).get('duration', 0.0),
+            'inference': timings_data.get('inference', {}).get('duration', 0.0),
+            'measurement_calculation': timings_data.get('measurement', {}).get('duration', 0.0),
+            'dicom_generation': timings_data.get('dicom_generation', {}).get('duration', 0.0),
+            'stages': {k: v.get('duration', 0.0) for k, v in timings_data.items()}
+        }
+        
+        # 4. Raw Predictions
+        performance_data = session.get('performance_data', {})
+        individual_preds = performance_data.get('individual_model_predictions', {})
+        raw_predictions: Dict[str, ModelPrediction] = {}
+        
+        for model_name, pred_data in individual_preds.items():
+            predictions = pred_data.get('predictions', {})
+            raw_predictions[model_name] = {
+                'boxes': predictions.get('boxes', []),
+                'labels': predictions.get('labels', []),
+                'scores': predictions.get('scores', [])
+            }
+            
+        # 5. Derived Results
+        measurements = session.get('measurements', {})
+        
+        # Helper to extract leg measurements safely
+        def get_leg_measurements(side_prefix: str) -> LegResults:
+            return {
+                'femur_length_mm': measurements.get(f'{side_prefix}_femur_length', {}).get('millimeters') if isinstance(measurements.get(f'{side_prefix}_femur_length'), dict) else None,
+                'tibia_length_mm': measurements.get(f'{side_prefix}_tibia_length', {}).get('millimeters') if isinstance(measurements.get(f'{side_prefix}_tibia_length'), dict) else None,
+                'total_length_mm': measurements.get(f'{side_prefix}_total_length', {}).get('millimeters') if isinstance(measurements.get(f'{side_prefix}_total_length'), dict) else None,
+            }
+
+        derived_results: DerivedResults = {
+            'left': get_leg_measurements('left'), # Assuming keys like 'left_femur_length'
+            'right': get_leg_measurements('right'), # Assuming keys like 'right_femur_length'
+            'metrics': {}
+        }
+        
+        # Fallback for old measurement structure if side prefixes aren't used
+        # This part depends on how your measurements dictionary is actually structured
+        # If it's just 'femur_length', we might need to know which leg it is or if it's combined
+        if not derived_results['left']['femur_length_mm'] and not derived_results['right']['femur_length_mm']:
+             # Try without prefix if specific side data is missing (backward compatibility)
+             derived_results['metrics']['legacy_femur_length_mm'] = measurements.get('femur_length', {}).get('millimeters') if isinstance(measurements.get('femur_length'), dict) else None
+             derived_results['metrics']['legacy_tibia_length_mm'] = measurements.get('tibia_length', {}).get('millimeters') if isinstance(measurements.get('tibia_length'), dict) else None
+             derived_results['metrics']['legacy_total_length_mm'] = measurements.get('total_length', {}).get('millimeters') if isinstance(measurements.get('total_length'), dict) else None
+
+        # 6. Status
+        status_obj: Status = {
+            'code': status,
+            'errors': performance_data.get('issues', [])
+        }
+        
+        return {
+            'metadata': metadata,
+            'context': context,
+            'timings': timings,
+            'raw_predictions': raw_predictions,
+            'derived_results': derived_results,
+            'status': status_obj
+        }
+
+    def get_influx_data(self, session_id: str) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Format session data for InfluxDB.
+        Retained for backward compatibility if InfluxDB client is re-added.
+        """
+        return []
+
+    def get_prometheus_data(self, session_id: str) -> Dict[str, Any]:
+        """
+        DEPRECATED: Format session data for Prometheus.
+        Retained for backward compatibility if Prometheus client is re-added.
+        """
+        return {}
     
     def cleanup_session(self, session_id: str) -> None:
         """

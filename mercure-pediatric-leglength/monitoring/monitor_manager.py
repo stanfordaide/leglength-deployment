@@ -1,20 +1,21 @@
 """
-Main monitoring coordinator with graceful fallback capabilities.
+Main monitoring coordinator.
 """
 
 import logging
 import time
 from typing import Dict, Any, Optional
 from .config_validator import validate_monitoring_config
-from .exceptions import ConfigurationError, ConnectionError
-from .influx_client import InfluxClient
-from .prometheus_client import PrometheusClient
+from .exceptions import ConfigurationError
+from .backends.file import FileBackend
+from .backends.mercure import MercureResultBackend
+from .backends.base import MonitoringBackend
 from .metrics_collector import MetricsCollector
 
 
 class MonitorManager:
     """
-    Main monitoring coordinator that handles optional InfluxDB and Prometheus integration.
+    Main monitoring coordinator.
     
     Features:
     - Graceful degradation when monitoring is unavailable
@@ -32,8 +33,8 @@ class MonitorManager:
         """
         self.logger = logger
         self.enabled = False
-        self.influx_client: Optional[InfluxClient] = None
-        self.prometheus_client: Optional[PrometheusClient] = None
+        self.file_backend: Optional[FileBackend] = None
+        self.mercure_backend: Optional[MercureResultBackend] = None
         self.metrics_collector: Optional[MetricsCollector] = None
         
         # Initialize monitoring if configuration is present
@@ -69,40 +70,33 @@ class MonitorManager:
                 self.logger
             )
             
-            # Initialize InfluxDB client if configured
-            if 'influxdb' in monitoring_config:
-                self.logger.info("Initializing InfluxDB client...")
-                try:
-                    self.influx_client = InfluxClient(
-                        monitoring_config['influxdb'],
-                        self.logger
-                    )
-                    self.logger.info("InfluxDB client initialized successfully")
-                except ConnectionError as e:
-                    self.logger.warning(f"InfluxDB initialization failed: {e}")
-                    self.influx_client = None
-            
-            # Initialize Prometheus client if configured
-            if 'prometheus' in monitoring_config:
-                self.logger.info("Initializing Prometheus client...")
-                try:
-                    self.prometheus_client = PrometheusClient(
-                        monitoring_config['prometheus'],
-                        self.logger
-                    )
-                    self.logger.info("Prometheus client initialized successfully")
-                except ConnectionError as e:
-                    self.logger.warning(f"Prometheus initialization failed: {e}")
-                    self.prometheus_client = None
+            # Initialize FileBackend (Default)
+            file_config = monitoring_config.get('backends', {}).get('file', {'enabled': True})
+            if file_config.get('enabled', True):
+                # Check for archive_path override
+                if 'archive_path' in monitoring_config:
+                    file_config['path'] = monitoring_config['archive_path']
+                    
+                self.file_backend = FileBackend(file_config, self.logger)
+                self.logger.info("FileBackend initialized")
+
+            # Initialize MercureResultBackend (Default)
+            mercure_config = monitoring_config.get('backends', {}).get('mercure', {'enabled': True})
+            if mercure_config.get('enabled', True):
+                # Mercure backend needs the output directory from the main config
+                # We assume 'output_dir' is passed in the main config or we default to '.'
+                mercure_config['output_dir'] = config.get('output_dir', '.')
+                self.mercure_backend = MercureResultBackend(mercure_config, self.logger)
+                self.logger.info("MercureResultBackend initialized")
             
             # Enable monitoring if at least one backend is available
-            if self.influx_client or self.prometheus_client:
+            if self.file_backend or self.mercure_backend:
                 self.enabled = True
                 backends = []
-                if self.influx_client:
-                    backends.append("InfluxDB")
-                if self.prometheus_client:
-                    backends.append("Prometheus")
+                if self.file_backend:
+                    backends.append("File")
+                if self.mercure_backend:
+                    backends.append("Mercure")
                 
                 self.logger.info(f"Monitoring enabled with backends: {', '.join(backends)}")
             else:
@@ -171,12 +165,6 @@ class MonitorManager:
             if self.metrics_collector:
                 self.metrics_collector.record_timing(session_id, stage, duration)
             
-            # Record in Prometheus
-            if self.prometheus_client:
-                self.prometheus_client.record_processing_duration(
-                    session_id, stage, duration
-                )
-            
             self.logger.debug(f"Tracked {stage} timing: {duration:.2f}s")
             
         except Exception as e:
@@ -224,17 +212,6 @@ class MonitorManager:
             if self.metrics_collector:
                 self.metrics_collector.record_model_metrics(session_id, model_name, metrics)
             
-            # Record in Prometheus if specific metrics are available
-            if self.prometheus_client:
-                landmarks = metrics.get('landmarks_detected', 0)
-                confidence_scores = metrics.get('confidence_scores', [])
-                
-                if confidence_scores:
-                    avg_confidence = sum(confidence_scores) / len(confidence_scores)
-                    self.prometheus_client.record_model_metrics(
-                        session_id, model_name, landmarks, avg_confidence
-                    )
-            
             self.logger.debug(f"Recorded model performance for {model_name}")
             
         except Exception as e:
@@ -263,15 +240,6 @@ class MonitorManager:
                     # Old method signature without dicom_path
                     self.metrics_collector.record_measurements(session_id, measurements)
             
-            # Record in Prometheus
-            if self.prometheus_client:
-                # Convert measurements to numeric values only
-                numeric_measurements = {
-                    k: v for k, v in measurements.items() 
-                    if isinstance(v, (int, float))
-                }
-                self.prometheus_client.record_measurements(session_id, numeric_measurements)
-            
             self.logger.debug(f"Recorded {len(measurements)} measurements")
             
         except Exception as e:
@@ -295,12 +263,6 @@ class MonitorManager:
             if self.metrics_collector and hasattr(self.metrics_collector, 'record_performance_data'):
                 self.metrics_collector.record_performance_data(session_id, performance_data, dicom_path)
             
-            # Record image-level metrics in Prometheus if available
-            if self.prometheus_client and 'image_metrics' in performance_data:
-                image_metrics = performance_data['image_metrics']
-                if image_metrics:
-                    self.prometheus_client.record_image_metrics(session_id, image_metrics)
-            
             self.logger.debug(f"Recorded performance data with {len(performance_data.get('uncertainties', {}))} points")
             
         except Exception as e:
@@ -318,12 +280,18 @@ class MonitorManager:
             return
         
         try:
-            # Record processing completion in Prometheus
-            if self.prometheus_client:
-                self.prometheus_client.record_processing_count(status)
-            
-            # Flush metrics to backends
-            self._flush_metrics(session_id)
+            # Get the full event
+            event = None
+            if self.metrics_collector:
+                event = self.metrics_collector.get_monitoring_event(session_id, status)
+
+            # 1. Archive the raw event (FileBackend)
+            if self.file_backend and event:
+                self.file_backend.record_event(event)
+
+            # 2. Write Mercure result.json (MercureBackend)
+            if self.mercure_backend and event:
+                self.mercure_backend.record_event(event)
             
             # Get accession number before cleanup for logging
             accession_number = None
@@ -343,45 +311,6 @@ class MonitorManager:
         except Exception as e:
             self.logger.debug(f"Failed to end monitoring session: {e}")
     
-    def _flush_metrics(self, session_id: str) -> None:
-        """
-        Flush all collected metrics to monitoring backends.
-        
-        Args:
-            session_id: Session identifier
-        """
-        if not self.metrics_collector:
-            return
-        
-        try:
-            # Send to InfluxDB
-            if self.influx_client:
-                influx_data = self.metrics_collector.get_influx_data(session_id)
-                self.logger.info(f"Generated {len(influx_data)} InfluxDB data points for session {session_id}")
-                if influx_data:
-                    # Log first data point for debugging
-                    self.logger.debug(f"Sample InfluxDB data: {influx_data[0] if influx_data else 'None'}")
-                    success = self.influx_client.write_metrics(influx_data)
-                    if success:
-                        self.logger.info(f"Successfully flushed {len(influx_data)} metrics to InfluxDB")
-                    else:
-                        self.logger.warning("Failed to flush metrics to InfluxDB")
-                else:
-                    self.logger.warning("No InfluxDB data generated - check metrics collection")
-            
-            # Send to Prometheus
-            if self.prometheus_client:
-                success = self.prometheus_client.push_metrics()
-                if success:
-                    self.logger.debug("Flushed metrics to Prometheus")
-                else:
-                    self.logger.debug("Failed to flush metrics to Prometheus")
-                    
-        except Exception as e:
-            self.logger.warning(f"Failed to flush metrics: {e}")
-            import traceback
-            self.logger.debug(traceback.format_exc())
-    
     def is_enabled(self) -> bool:
         """
         Check if monitoring is enabled.
@@ -390,3 +319,4 @@ class MonitorManager:
             True if monitoring is active, False otherwise
         """
         return self.enabled
+

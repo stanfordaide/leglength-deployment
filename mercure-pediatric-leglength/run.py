@@ -446,6 +446,10 @@ def main():
     try:
         logger.info("Attempting to initialize monitoring...")
         from monitoring import MonitorManager
+        
+        # Pass output_dir to config for MercureBackend
+        config['output_dir'] = str(args.output_dir)
+        
         monitor = MonitorManager(config, logger)
         logger.info(f"Monitoring initialization completed. Enabled: {monitor.is_enabled()}")
     except ImportError:
