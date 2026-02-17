@@ -199,8 +199,8 @@ def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_d
     serializable_results = convert_numpy_for_json(comprehensive_results)
     
     # Save to JSON file
-    stem = dicom_path.stem
-    json_output_path = output_dir / f'{stem}_complete_results.json'
+    # Use result.json as the standard output filename for Mercure
+    json_output_path = output_dir / 'result.json'
     try:
         with open(json_output_path, 'w') as f:
             json.dump(serializable_results, f, indent=2, sort_keys=True)
@@ -211,7 +211,7 @@ def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_d
         # Also add the JSON file path to results
         if 'output_files' not in serializable_results['results']:
             serializable_results['results']['output_files'] = {}
-        serializable_results['results']['output_files']['complete_results_json'] = str(json_output_path)
+        serializable_results['results']['output_files']['result_json'] = str(json_output_path)
         
     except Exception as e:
         if logger:
@@ -234,8 +234,7 @@ def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logg
     if results.get('skipped', False):
         logger.warning(f"Skipping DICOM {dicom_path.name}: {results.get('reason', 'Unknown reason')}")
         # Still save a JSON result for the skipped image
-        stem = dicom_path.stem
-        json_output_path = output_dir / f'{stem}_complete_results.json'
+        json_output_path = output_dir / 'result.json'
         try:
             with open(json_output_path, 'w') as f:
                 json.dump(results, f, indent=2, sort_keys=True)
@@ -632,7 +631,7 @@ def main():
                         logger.warning(f"  ✗ {output_type}: {Path(file_path).name} (not found)")
                 
                 # Specifically highlight the JSON results file
-                json_file = args.output_dir / 'complete_results.json'
+                json_file = args.output_dir / 'result.json'
                 if json_file.exists():
                     logger.info(f"📄 Complete results saved to JSON: {json_file.name}")
                 else:
