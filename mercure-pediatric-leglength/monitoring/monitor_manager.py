@@ -284,7 +284,7 @@ class MonitorManager:
             event = None
             if self.metrics_collector:
                 event = self.metrics_collector.get_monitoring_event(session_id, status)
-
+            
             # 1. Archive the raw event (FileBackend)
             if self.file_backend and event:
                 self.file_backend.record_event(event)

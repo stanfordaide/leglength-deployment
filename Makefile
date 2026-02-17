@@ -102,7 +102,7 @@ status:
 	@sudo docker images stanfordaide/pediatric-leglength --format "  {{.Repository}}:{{.Tag}}  ({{.Size}}, created {{.CreatedSince}})" 2>/dev/null || printf "  Image not built\n"
 	@printf "\n"
 
-start-all: monitoring-start orthanc-start mercure-start
+start-all: mercure-start orthanc-start monitoring-start
 	@printf "\n"
 	@printf "$(GREEN)✅ All services started!$(RESET)\n"
 	@printf "\n"
@@ -114,7 +114,7 @@ start-all: monitoring-start orthanc-start mercure-start
 	@printf "  Workflow UI:        http://localhost:9030\n"
 	@printf "  Grafana:            http://localhost:9032\n"
 
-stop-all: mercure-stop orthanc-stop monitoring-stop
+stop-all: monitoring-stop orthanc-stop mercure-stop
 	@printf "$(YELLOW)All services stopped.$(RESET)\n"
 
 restart-all: stop-all start-all
@@ -190,8 +190,11 @@ orthanc-validate:
 
 mercure-start:
 	@printf "$(CYAN)Starting Mercure...$(RESET)\n"
-	@chmod +x scripts/install-mercure.sh
-	@./scripts/install-mercure.sh -y
+	@if [ -d "/opt/mercure" ]; then \
+		cd /opt/mercure && sudo docker compose up -d; \
+	else \
+		chmod +x scripts/install-mercure.sh && ./scripts/install-mercure.sh -y; \
+	fi
 	@printf "$(GREEN)✅ Mercure started$(RESET)\n"
 
 mercure-stop:

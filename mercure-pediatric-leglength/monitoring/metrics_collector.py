@@ -354,15 +354,15 @@ class MetricsCollector:
         """
         if session_id not in self.sessions:
             return None
-            
-        session = self.sessions[session_id]
-        config = session.get('config', {})
-        dicom_path = session.get('dicom_path')
         
-        # Extract DICOM metadata
-        dicom_metadata = {}
-        if dicom_path:
-            dicom_metadata = self._extract_dicom_metadata(dicom_path)
+        session = self.sessions[session_id]
+            config = session.get('config', {})
+            dicom_path = session.get('dicom_path')
+            
+            # Extract DICOM metadata
+            dicom_metadata = {}
+            if dicom_path:
+                dicom_metadata = self._extract_dicom_metadata(dicom_path)
             
         # 1. Metadata
         metadata: Metadata = {
@@ -381,8 +381,8 @@ class MetricsCollector:
             'image_size': [0, 0], # TODO: We need to capture image size
             'patient_age_group': dicom_metadata.get('patient_age_group', 'unknown'),
             'patient_sex': dicom_metadata.get('patient_gender', 'unknown'),
-            'study_id': dicom_metadata.get('study_id', 'unknown'),
-            'series_id': dicom_metadata.get('series_id', 'unknown'),
+                'study_id': dicom_metadata.get('study_id', 'unknown'),
+                'series_id': dicom_metadata.get('series_id', 'unknown'),
             'accession_number': dicom_metadata.get('accession_number', 'unknown')
         }
         
@@ -397,7 +397,7 @@ class MetricsCollector:
         }
         
         # 4. Raw Predictions
-        performance_data = session.get('performance_data', {})
+                        performance_data = session.get('performance_data', {})
         individual_preds = performance_data.get('individual_model_predictions', {})
         raw_predictions: Dict[str, ModelPrediction] = {}
         
@@ -456,13 +456,13 @@ class MetricsCollector:
         Retained for backward compatibility if InfluxDB client is re-added.
         """
         return []
-
+    
     def get_prometheus_data(self, session_id: str) -> Dict[str, Any]:
         """
         DEPRECATED: Format session data for Prometheus.
         Retained for backward compatibility if Prometheus client is re-added.
         """
-        return {}
+            return {}
     
     def cleanup_session(self, session_id: str) -> None:
         """
