@@ -24,8 +24,8 @@
     "dicom_receiver": {
         "additional_tags": {}
     },
-    "graphite_ip": "172.17.0.1",
-    "graphite_port": 9038,
+    "graphite_ip": "graphyte",
+    "graphite_port": 2003,
     "influxdb_host": "",
     "influxdb_token": "",
     "influxdb_org": "",
