@@ -212,6 +212,22 @@ function OnStableStudy(studyId, tags, metadata, origin)
 end
 
 --
+-- Called when a study is deleted from Orthanc
+--
+function OnDeletedStudy(studyId)
+    -- Safety check
+    if not allLoaded then
+        return
+    end
+    
+    Log.info("OnDeletedStudy triggered", { studyId = studyId })
+    
+    if Tracker.studyDeleted then
+        Tracker.studyDeleted(studyId)
+    end
+end
+
+--
 -- Called when Orthanc starts (optional - for initialization)
 --
 function Initialize()

@@ -232,6 +232,30 @@ function Tracker.resetStudy(studyId)
     return apiCall(endpoint, payload)
 end
 
+--
+-- Track when a study is deleted from Orthanc
+-- Called by OnDeletedStudy
+--
+-- @param studyId: string - Orthanc study ID
+--
+function Tracker.studyDeleted(studyId)
+    Log.info("studyDeleted called", { studyId = studyId or "nil" })
+    
+    if not studyId then
+        Log.warn("studyDeleted called without studyId")
+        return false
+    end
+    
+    local payload = {
+        study_id = tostring(studyId),
+    }
+    
+    local endpoint = "/track/delete"
+    
+    Log.info("Deleting study tracking state", { studyId = studyId, endpoint = endpoint })
+    return apiCall(endpoint, payload)
+end
+
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- SECTION 4: CONVENIENCE WRAPPERS
 -- ─────────────────────────────────────────────────────────────────────────────────

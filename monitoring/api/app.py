@@ -216,6 +216,10 @@ def poll_pending_jobs():
                         update_workflow_status(cur, study_id, destination, True, None)
                         cur.execute("DELETE FROM pending_jobs WHERE job_id = %s", (job_id,))
                         
+                        # IMPORTANT: If destination is MERCURE, we only update mercure_sent_at.
+                        # We DO NOT update ai_results_received here. That must come from /track/ai-results
+                        # or from Bookkeeper enrichment.
+                        
                     elif state == 'Failure':
                         # Job failed
                         error_msg = job_info.get('ErrorDescription') or job_info.get('ErrorCode') or 'Unknown error'
@@ -649,6 +653,36 @@ def track_reset():
     conn.close()
     
     app.logger.info(f"[track/reset] Study {study_id} reset complete")
+    return jsonify({'ok': True, 'deleted': deleted_count})
+
+
+@app.route('/track/delete', methods=['POST'])
+def track_delete():
+    """Delete a study's tracking state (called when study is deleted from Orthanc)"""
+    data = request.json or {}
+    study_id = data.get('study_id')
+    
+    if not study_id:
+        return jsonify({'error': 'study_id required'}), 400
+    
+    app.logger.info(f"[track/delete] Deleting study tracking: {study_id}")
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # Delete the workflow record
+    cur.execute("DELETE FROM study_workflows WHERE study_id = %s", (study_id,))
+    
+    # Also clean up any pending jobs
+    cur.execute("DELETE FROM pending_jobs WHERE study_id = %s", (study_id,))
+    
+    deleted_count = cur.rowcount
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    app.logger.info(f"[track/delete] Study {study_id} deleted")
     return jsonify({'ok': True, 'deleted': deleted_count})
 
 
