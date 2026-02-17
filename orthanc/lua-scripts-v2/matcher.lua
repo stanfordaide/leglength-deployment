@@ -74,11 +74,12 @@ local function hasAIResultMarker(instances)
         end
         
         -- CHECK 2: Structured Report modality (AI outputs are often SR)
-        local modality = Utils.safeGet(instance, "Modality", "")
-        if Utils.upper(modality) == "SR" then
-            Log.debug("AI result marker found", { check = "Modality", value = modality })
-            return true
-        end
+        -- REMOVED: Too broad - catches radiation dose reports etc.
+        -- local modality = Utils.safeGet(instance, "Modality", "")
+        -- if Utils.upper(modality) == "SR" then
+        --     Log.debug("AI result marker found", { check = "Modality", value = modality })
+        --     return true
+        -- end
         
         -- CHECK 3: AI-specific series descriptions
         local seriesDesc = Utils.safeGet(instance, "SeriesDescription", "")
