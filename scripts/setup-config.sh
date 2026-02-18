@@ -462,6 +462,11 @@ if [ -f "$PROMETHEUS_TEMPLATE" ]; then
     export ORTHANC_ADMIN_USER
     export ORTHANC_ADMIN_PASS
     
+    # Remove if it exists as a directory (from previous errors)
+    if [ -d "$PROMETHEUS_OUTPUT" ]; then
+        rm -rf "$PROMETHEUS_OUTPUT"
+    fi
+    
     envsubst '${DOCKER_HOST_GATEWAY} ${ORTHANC_WEB_PORT} ${ORTHANC_ADMIN_USER} ${ORTHANC_ADMIN_PASS}' \
         < "$PROMETHEUS_TEMPLATE" \
         > "$PROMETHEUS_OUTPUT"

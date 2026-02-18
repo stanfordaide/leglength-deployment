@@ -174,10 +174,6 @@ orthanc-setup:
 	@cd orthanc && make setup
 	@printf "$(GREEN)✅ Orthanc setup complete$(RESET)\n"
 
-orthanc-ps:
-	@printf "$(CYAN)Orthanc Containers:$(RESET)\n"
-	@cd orthanc && docker compose ps
-
 orthanc-clear:
 	@printf "$(YELLOW)Clearing Orthanc data...$(RESET)\n"
 	@printf "\n"
@@ -264,14 +260,6 @@ mercure-setup:
 			printf "$(YELLOW)⚠️  Configuration may need attention$(RESET)\n"; \
 	fi
 
-mercure-ps:
-	@printf "$(CYAN)Mercure Containers:$(RESET)\n"
-	@if [ -d "/opt/mercure" ]; then \
-		cd /opt/mercure && sudo docker compose ps; \
-	else \
-		printf "  Mercure not installed\n"; \
-	fi
-
 mercure-clear:
 	@printf "$(YELLOW)Clearing Mercure data...$(RESET)\n"
 	@printf "\n"
@@ -312,6 +300,11 @@ mercure-clear:
 
 monitoring-start:
 	@printf "$(CYAN)Starting Monitoring stack...$(RESET)\n"
+	@if [ ! -f "monitoring-v2/config/prometheus/prometheus.yml" ]; then \
+		printf "$(RED)❌ ERROR: prometheus.yml not found!$(RESET)\n"; \
+		printf "   Run 'make setup' first to generate configs.\n"; \
+		exit 1; \
+	fi
 	@cd monitoring-v2 && make start
 	@printf "$(GREEN)✅ Monitoring started$(RESET)\n"
 
@@ -340,10 +333,6 @@ monitoring-setup:
 	@printf "$(CYAN)Setting up Monitoring...$(RESET)\n"
 	@cd monitoring-v2 && make setup
 	@printf "$(GREEN)✅ Monitoring setup complete$(RESET)\n"
-
-monitoring-ps:
-	@printf "$(CYAN)Monitoring Containers:$(RESET)\n"
-	@cd monitoring-v2 && docker compose ps
 
 # =============================================================================
 # AI MODULE - Docker Image (Build Artifact)
