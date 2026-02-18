@@ -462,7 +462,7 @@ class MetricsCollector:
         DEPRECATED: Format session data for Prometheus.
         Retained for backward compatibility if Prometheus client is re-added.
         """
-            return {}
+        return {}
     
     def cleanup_session(self, session_id: str) -> None:
         """
