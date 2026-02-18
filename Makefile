@@ -2,13 +2,13 @@
 # Master orchestration for all components
 #
 # PATTERN:
-#   Services (orthanc, mercure, monitoring): start, stop, restart, status, logs, shell
+#   Services (orthanc, mercure, monitoring): start, stop, setup, ps, logs, clear
 #   Build artifacts (ai): build, test, push, clean, info
 
-.PHONY: help status urls start-all stop-all restart-all \
-        orthanc-start orthanc-stop orthanc-restart orthanc-status orthanc-logs orthanc-debug orthanc-shell orthanc-validate \
-        mercure-start mercure-stop mercure-restart mercure-status mercure-logs mercure-debug mercure-shell \
-        monitoring-start monitoring-stop monitoring-restart monitoring-status monitoring-logs monitoring-debug \
+.PHONY: help status urls start-all stop-all \
+        orthanc-start orthanc-stop orthanc-logs orthanc-clear orthanc-setup orthanc-ps \
+        mercure-start mercure-stop mercure-logs mercure-clear mercure-setup mercure-ps \
+        monitoring-start monitoring-stop monitoring-logs monitoring-clear monitoring-setup monitoring-ps \
         ai-build ai-test ai-push ai-clean ai-info \
         init setup setup-config clean clean-all ps
 
@@ -32,37 +32,33 @@ help:
 	@printf "  make urls              Show all service URLs\n"
 	@printf "  make start-all         Start all components\n"
 	@printf "  make stop-all          Stop all components\n"
-	@printf "  make restart-all       Restart all components\n"
 	@printf "  make ps                Show running containers\n"
 	@printf "\n"
-	@printf "$(BOLD)Services (start/stop/restart/status/logs/shell):$(RESET)\n"
+	@printf "$(BOLD)Services:$(RESET)\n"
 	@printf "\n"
 	@printf "  $(GREEN)Orthanc$(RESET) - DICOM PACS Server\n"
 	@printf "    make orthanc-start   Start Orthanc\n"
 	@printf "    make orthanc-stop    Stop Orthanc\n"
-	@printf "    make orthanc-restart Restart Orthanc\n"
-	@printf "    make orthanc-status  Check Orthanc health\n"
+	@printf "    make orthanc-setup   Setup Orthanc (create dirs from .env)\n"
+	@printf "    make orthanc-ps      List Orthanc containers\n"
 	@printf "    make orthanc-logs    View Orthanc logs (follow)\n"
-	@printf "    make orthanc-debug   Show recent logs (troubleshooting)\n"
-	@printf "    make orthanc-shell   Shell into Orthanc container\n"
-	@printf "    make orthanc-validate Check Orthanc config\n"
+	@printf "    make orthanc-clear   $(YELLOW)Clear all data (requires stop first)$(RESET)\n"
 	@printf "\n"
 	@printf "  $(GREEN)Mercure$(RESET) - AI Job Orchestrator\n"
 	@printf "    make mercure-start   Start Mercure\n"
 	@printf "    make mercure-stop    Stop Mercure\n"
-	@printf "    make mercure-restart Restart Mercure\n"
-	@printf "    make mercure-status  Check Mercure health\n"
+	@printf "    make mercure-setup   Setup Mercure (verify installation)\n"
+	@printf "    make mercure-ps      List Mercure containers\n"
 	@printf "    make mercure-logs    View Mercure logs (follow)\n"
-	@printf "    make mercure-debug   Show recent logs (troubleshooting)\n"
-	@printf "    make mercure-shell   Shell into Mercure container\n"
+	@printf "    make mercure-clear   $(YELLOW)Clear all data (requires stop first)$(RESET)\n"
 	@printf "\n"
 	@printf "  $(GREEN)Monitoring$(RESET) - Grafana, Prometheus, Graphite\n"
 	@printf "    make monitoring-start   Start monitoring stack\n"
 	@printf "    make monitoring-stop    Stop monitoring stack\n"
-	@printf "    make monitoring-restart Restart monitoring stack\n"
-	@printf "    make monitoring-status  Check monitoring health\n"
+	@printf "    make monitoring-setup   Setup monitoring (create dirs, verify config)\n"
+	@printf "    make monitoring-ps      List monitoring containers\n"
 	@printf "    make monitoring-logs    View monitoring logs (follow)\n"
-	@printf "    make monitoring-debug   Show recent logs (troubleshooting)\n"
+	@printf "    make monitoring-clear   $(YELLOW)Clear all data (requires stop first)$(RESET)\n"
 	@printf "\n"
 	@printf "$(BOLD)AI Module (build/test/push/clean/info):$(RESET)\n"
 	@printf "    make ai-build        Build Docker image\n"
@@ -72,13 +68,28 @@ help:
 	@printf "    make ai-info         Show image info\n"
 	@printf "\n"
 	@printf "$(BOLD)Setup (run in order):$(RESET)\n"
-	@printf "    make init            Create config.env from template\n"
+	@printf "    make init            $(CYAN)Create config.env from template (first time only)$(RESET)\n"
 	@printf "    nano config.env      Edit passwords and paths\n"
-	@printf "    make setup           Generate all component configs\n"
+	@printf "    make setup           Generate all component configs from config.env\n"
+	@printf "    make <service>-setup Setup individual service (create dirs, verify)\n"
+	@printf "\n"
+	@printf "    $(BOLD)Note:$(RESET) 'init' creates the master config.env file.\n"
+	@printf "         'setup' generates component-specific configs (.env files).\n"
+	@printf "         '<service>-setup' prepares that service's directories.\n"
 	@printf "\n"
 	@printf "$(BOLD)Cleanup:$(RESET)\n"
 	@printf "    make clean           Stop containers, keep data\n"
 	@printf "    make clean-all       $(RED)DANGER$(RESET) Remove everything\n"
+	@printf "\n"
+	@printf "$(BOLD)Fresh Start (Clear Data):$(RESET)\n"
+	@printf "    make <service>-stop  Stop the service first\n"
+	@printf "    make <service>-clear Clear all data for that service\n"
+	@printf "    make setup           Regenerate configs\n"
+	@printf "    make <service>-start Start fresh\n"
+	@printf "\n"
+	@printf "    Examples:\n"
+	@printf "      make monitoring-stop && make monitoring-clear && make setup && make monitoring-start\n"
+	@printf "      make orthanc-stop && make orthanc-clear && make setup && make orthanc-start\n"
 
 # =============================================================================
 # GLOBAL COMMANDS
@@ -117,8 +128,6 @@ start-all: mercure-start orthanc-start monitoring-start
 stop-all: monitoring-stop orthanc-stop mercure-stop
 	@printf "$(YELLOW)All services stopped.$(RESET)\n"
 
-restart-all: stop-all start-all
-
 ps:
 	@sudo docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus" --filter "name=monitoring" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
@@ -153,36 +162,57 @@ orthanc-stop:
 	@cd orthanc && sudo docker compose down
 	@printf "$(YELLOW)Orthanc stopped$(RESET)\n"
 
-orthanc-restart: orthanc-stop orthanc-start orthanc-seed-modalities
-
-orthanc-seed-modalities:
-	@cd orthanc && sudo make seed-modalities
-
-orthanc-status:
-	@printf "$(CYAN)Orthanc Container Status:$(RESET)\n"
-	@cd orthanc && sudo docker compose ps
-	@printf "\n"
-	@printf "$(CYAN)Health Check:$(RESET)\n"
-	@curl -sf http://localhost:9011/system 2>/dev/null | jq -r '"  Version: \(.Version)\n  DICOM AET: \(.DicomAet)\n  Storage: \(.StorageSize) bytes"' || printf "  $(RED)Not responding - run 'make orthanc-debug' for logs$(RESET)\n"
+orthanc-ps:
+	@printf "$(CYAN)Orthanc Containers:$(RESET)\n"
+	@cd orthanc && docker compose ps
 
 orthanc-logs:
 	@cd orthanc && sudo docker compose logs -f --tail=100
 
-orthanc-debug:
-	@printf "$(CYAN)Orthanc Debug Info:$(RESET)\n"
-	@printf "\n$(BOLD)Container Status:$(RESET)\n"
-	@cd orthanc && sudo docker compose ps -a
-	@printf "\n$(BOLD)Recent Logs (orthanc-server):$(RESET)\n"
-	@cd orthanc && sudo docker compose logs orthanc-server --tail=30 2>/dev/null || printf "  No logs available\n"
-	@printf "\n$(BOLD)Recent Logs (orthanc-postgres):$(RESET)\n"
-	@cd orthanc && sudo docker compose logs orthanc-postgres --tail=10 2>/dev/null || printf "  No logs available\n"
+orthanc-setup:
+	@printf "$(CYAN)Setting up Orthanc...$(RESET)\n"
+	@cd orthanc && make setup
+	@printf "$(GREEN)✅ Orthanc setup complete$(RESET)\n"
 
-orthanc-shell:
-	@cd orthanc && sudo docker compose exec orthanc-server bash
+orthanc-ps:
+	@printf "$(CYAN)Orthanc Containers:$(RESET)\n"
+	@cd orthanc && docker compose ps
 
-orthanc-validate:
-	@printf "$(CYAN)Validating Orthanc configuration...$(RESET)\n"
-	@cd orthanc && make validate
+orthanc-clear:
+	@printf "$(YELLOW)Clearing Orthanc data...$(RESET)\n"
+	@printf "\n"
+	@printf "Checking if Orthanc is stopped...\n"
+	@if cd orthanc && docker compose ps 2>/dev/null | grep -q "Up"; then \
+		printf "$(RED)❌ ERROR: Orthanc is still running!$(RESET)\n"; \
+		printf "   Please run 'make orthanc-stop' first.\n"; \
+		exit 1; \
+	fi
+	@printf "$(GREEN)✅ Orthanc is stopped$(RESET)\n"
+	@printf "\n"
+	@printf "$(YELLOW)⚠️  This will permanently delete:$(RESET)\n"
+	@printf "   - All Docker volumes\n"
+	@printf "   - DICOM storage data\n"
+	@printf "   - PostgreSQL database data\n"
+	@printf "   - Configuration file (.env)\n"
+	@printf "\n"
+	@read -p "Continue? Type 'yes' to confirm: " confirm && [ "$$confirm" = "yes" ] || exit 1
+	@printf "\n"
+	@printf "$(YELLOW)🗑️  Removing containers and volumes...$(RESET)\n"
+	@cd orthanc && docker compose down -v --remove-orphans 2>/dev/null || true
+	@printf "$(YELLOW)🗑️  Removing configuration...$(RESET)\n"
+	@cd orthanc && rm -f .env 2>/dev/null || true
+	@printf "$(YELLOW)🗑️  Clearing DICOM and database storage...$(RESET)\n"
+	@cd orthanc && if [ -f .env ]; then \
+		. ./.env && \
+		sudo rm -rf "$$DICOM_STORAGE"/* 2>/dev/null || rm -rf "$$DICOM_STORAGE"/* 2>/dev/null || true && \
+		sudo rm -rf "$$POSTGRES_STORAGE"/* 2>/dev/null || rm -rf "$$POSTGRES_STORAGE"/* 2>/dev/null || true; \
+	fi
+	@printf "\n"
+	@printf "$(GREEN)✅ Orthanc cleared$(RESET)\n"
+	@printf "\n"
+	@printf "Next steps:\n"
+	@printf "  1. make setup          (regenerate configs)\n"
+	@printf "  2. make orthanc-start\n"
 
 # =============================================================================
 # MERCURE - AI Job Orchestrator
@@ -202,27 +232,71 @@ mercure-stop:
 	@cd /opt/mercure && sudo docker compose down 2>/dev/null || printf "Mercure not running\n"
 	@printf "$(YELLOW)Mercure stopped$(RESET)\n"
 
-mercure-restart: mercure-stop mercure-start
-
-mercure-status:
-	@printf "$(CYAN)Mercure Status:$(RESET)\n"
-	@cd /opt/mercure && sudo docker compose ps 2>/dev/null || printf "  Not running\n"
-	@printf "\n"
-	@printf "$(CYAN)Health Check:$(RESET)\n"
-	@curl -sf http://localhost:9020/api/status 2>/dev/null && printf "  $(GREEN)Responding$(RESET)\n" || printf "  $(RED)Not responding - run 'make mercure-debug' for logs$(RESET)\n"
+mercure-ps:
+	@printf "$(CYAN)Mercure Containers:$(RESET)\n"
+	@if [ -d "/opt/mercure" ]; then \
+		cd /opt/mercure && sudo docker compose ps; \
+	else \
+		printf "  Mercure not installed\n"; \
+	fi
 
 mercure-logs:
 	@cd /opt/mercure && sudo docker compose logs -f --tail=100
 
-mercure-debug:
-	@printf "$(CYAN)Mercure Debug Info:$(RESET)\n"
-	@printf "\n$(BOLD)Container Status:$(RESET)\n"
-	@cd /opt/mercure && sudo docker compose ps -a 2>/dev/null || printf "  Mercure not installed\n"
-	@printf "\n$(BOLD)Recent Logs:$(RESET)\n"
-	@cd /opt/mercure && sudo docker compose logs --tail=30 2>/dev/null || printf "  No logs available\n"
+mercure-setup:
+	@printf "$(CYAN)Checking Mercure installation...$(RESET)\n"
+	@if [ ! -d "/opt/mercure" ]; then \
+		printf "$(YELLOW)Mercure not installed. Installing...$(RESET)\n"; \
+		chmod +x scripts/install-mercure.sh && ./scripts/install-mercure.sh -y; \
+	else \
+		printf "$(GREEN)✅ Mercure is installed at /opt/mercure$(RESET)\n"; \
+		printf "$(CYAN)Verifying configuration...$(RESET)\n"; \
+		cd /opt/mercure && sudo docker compose config > /dev/null 2>&1 && \
+			printf "$(GREEN)✅ Configuration valid$(RESET)\n" || \
+			printf "$(YELLOW)⚠️  Configuration may need attention$(RESET)\n"; \
+	fi
 
-mercure-shell:
-	@cd /opt/mercure && sudo docker compose exec mercure_ui bash
+mercure-ps:
+	@printf "$(CYAN)Mercure Containers:$(RESET)\n"
+	@if [ -d "/opt/mercure" ]; then \
+		cd /opt/mercure && sudo docker compose ps; \
+	else \
+		printf "  Mercure not installed\n"; \
+	fi
+
+mercure-clear:
+	@printf "$(YELLOW)Clearing Mercure data...$(RESET)\n"
+	@printf "\n"
+	@if [ ! -d "/opt/mercure" ]; then \
+		printf "$(YELLOW)Mercure not installed. Nothing to clear.$(RESET)\n"; \
+		exit 0; \
+	fi
+	@printf "Checking if Mercure is stopped...\n"
+	@if cd /opt/mercure && sudo docker compose ps 2>/dev/null | grep -q "Up"; then \
+		printf "$(RED)❌ ERROR: Mercure is still running!$(RESET)\n"; \
+		printf "   Please run 'make mercure-stop' first.\n"; \
+		exit 1; \
+	fi
+	@printf "$(GREEN)✅ Mercure is stopped$(RESET)\n"
+	@printf "\n"
+	@printf "$(YELLOW)⚠️  This will permanently delete:$(RESET)\n"
+	@printf "   - All Docker volumes\n"
+	@printf "   - Mercure database and job data\n"
+	@printf "   - All processed jobs history\n"
+	@printf "\n"
+	@read -p "Continue? Type 'yes' to confirm: " confirm && [ "$$confirm" = "yes" ] || exit 1
+	@printf "\n"
+	@printf "$(YELLOW)🗑️  Removing containers and volumes...$(RESET)\n"
+	@cd /opt/mercure && sudo docker compose down -v --remove-orphans 2>/dev/null || true
+	@printf "$(YELLOW)🗑️  Clearing Mercure data directories...$(RESET)\n"
+	@sudo rm -rf /opt/mercure/data/* 2>/dev/null || true
+	@sudo rm -rf /opt/mercure/db/* 2>/dev/null || true
+	@printf "\n"
+	@printf "$(GREEN)✅ Mercure cleared$(RESET)\n"
+	@printf "\n"
+	@printf "Next steps:\n"
+	@printf "  1. make setup          (regenerate configs if needed)\n"
+	@printf "  2. make mercure-start\n"
 
 # =============================================================================
 # MONITORING - Metrics Collection (Grafana, Prometheus, Graphite)
@@ -238,21 +312,30 @@ monitoring-stop:
 	@cd monitoring-v2 && make stop
 	@printf "$(YELLOW)Monitoring stopped$(RESET)\n"
 
-monitoring-restart: monitoring-stop monitoring-start
-
-monitoring-status:
-	@printf "$(CYAN)Monitoring Status:$(RESET)\n"
-	@cd monitoring-v2 && make status
+monitoring-ps:
+	@printf "$(CYAN)Monitoring Containers:$(RESET)\n"
+	@cd monitoring-v2 && docker compose ps
 
 monitoring-logs:
 	@cd monitoring-v2 && make logs
 
-monitoring-debug:
-	@printf "$(CYAN)Monitoring Debug Info:$(RESET)\n"
-	@printf "\n$(BOLD)Container Status:$(RESET)\n"
-	@cd monitoring-v2 && sudo docker compose ps -a
-	@printf "\n$(BOLD)Recent Logs:$(RESET)\n"
-	@cd monitoring-v2 && sudo docker compose logs --tail=30 2>/dev/null || printf "  No logs available\n"
+monitoring-clear:
+	@printf "$(YELLOW)Clearing Monitoring data...$(RESET)\n"
+	@cd monitoring-v2 && make clear
+	@printf "$(GREEN)✅ Monitoring cleared$(RESET)\n"
+	@printf "\n"
+	@printf "Next steps:\n"
+	@printf "  1. make setup          (regenerate configs)\n"
+	@printf "  2. make monitoring-start\n"
+
+monitoring-setup:
+	@printf "$(CYAN)Setting up Monitoring...$(RESET)\n"
+	@cd monitoring-v2 && make setup
+	@printf "$(GREEN)✅ Monitoring setup complete$(RESET)\n"
+
+monitoring-ps:
+	@printf "$(CYAN)Monitoring Containers:$(RESET)\n"
+	@cd monitoring-v2 && docker compose ps
 
 # =============================================================================
 # AI MODULE - Docker Image (Build Artifact)
