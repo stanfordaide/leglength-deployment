@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 import shutil
 import numpy as np
-import requests
 from pydicom.uid import generate_uid
 import pydicom
 import tempfile
@@ -258,33 +257,6 @@ def persist_results(output_dir: Path, series_id: str, accession_number: str, log
         
     except Exception as e:
         logger.error(f"Failed to persist results: {e}")
-
-
-def send_results_to_api(results: dict, study_uid: str, logger: logging.Logger):
-    """
-    Send results to the Monitoring API for storage.
-    """
-    # Use Docker gateway IP to reach the API on the host
-    api_url = os.environ.get('WORKFLOW_API_URL', 'http://172.17.0.1:9031')
-    endpoint = f"{api_url}/track/ai-results"
-    
-    try:
-        # Prepare payload
-        payload = {
-            'study_uid': study_uid,
-            'results': results
-        }
-        
-        logger.info(f"Sending results to API: {endpoint} (study_uid={study_uid})")
-        response = requests.post(endpoint, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            logger.info("Successfully sent results to API")
-        else:
-            logger.warning(f"Failed to send results to API: {response.status_code} {response.text}")
-            
-    except Exception as e:
-        logger.error(f"Error sending results to API: {e}")
 
 
 
@@ -563,7 +535,6 @@ def main():
         
         dicom_headers = pydicom.dcmread(dicom_files[0], stop_before_pixels=True)
         accession_number = getattr(dicom_headers, "AccessionNumber", None)
-        study_uid = getattr(dicom_headers, "StudyInstanceUID", None)
         
         # Start monitoring session using accession number as primary identifier
         monitoring_id = accession_number if accession_number else series_id
@@ -650,9 +621,6 @@ def main():
                 
                 # Persist results to monitoring storage
                 persist_results(args.output_dir, series_id, accession_number, logger)
-                
-                # Send results to API
-                send_results_to_api(results, study_uid, logger)
                 
                 # Record metrics
                 if monitor:
