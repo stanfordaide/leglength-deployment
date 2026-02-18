@@ -429,6 +429,26 @@ MONITORING_DATA_PATH=${MONITORING_DATA_PATH}
 EOF
 echo -e "  ${GREEN}✓${NC} monitoring/.env created"
 
+# Generate Monitoring v2 .env
+echo -e "${CYAN}Generating monitoring-v2/.env...${NC}"
+cat > "$REPO_ROOT/monitoring-v2/.env" << EOF
+# Monitoring v2 - Lightweight Metrics Collection
+# Generated from config.env.template by setup-config.sh
+
+# Grafana
+GRAFANA_PORT=${GRAFANA_PORT}
+GRAFANA_USER=${GRAFANA_USER}
+GRAFANA_PASS=${GRAFANA_PASS}
+
+# Prometheus
+PROMETHEUS_PORT=${PROMETHEUS_PORT}
+
+# Graphite
+GRAPHITE_PORT=${GRAPHITE_PORT}
+GRAPHITE_PICKLE_PORT=${GRAPHITE_PICKLE_PORT}
+EOF
+echo -e "  ${GREEN}✓${NC} monitoring-v2/.env created"
+
 # =============================================================================
 # Set Secure File Permissions
 # =============================================================================
@@ -447,6 +467,9 @@ echo -e "  ${GREEN}✓${NC} orthanc/config/orthanc.json (600)"
 
 chmod 600 "$REPO_ROOT/monitoring/.env"
 echo -e "  ${GREEN}✓${NC} monitoring/.env (600)"
+
+chmod 600 "$REPO_ROOT/monitoring-v2/.env"
+echo -e "  ${GREEN}✓${NC} monitoring-v2/.env (600)"
 
 chmod 600 "$REPO_ROOT/mercure/config-generated/db.env"
 chmod 600 "$REPO_ROOT/mercure/config-generated/install.env"
@@ -476,6 +499,7 @@ echo "  • mercure/config-generated/db.env"
 echo "  • mercure/config-generated/install.env"
 echo "  • mercure/config-generated/mercure.json"
 echo "  • monitoring/.env"
+echo "  • monitoring-v2/.env"
 echo ""
 echo -e "${CYAN}Next steps:${NC}"
 echo ""

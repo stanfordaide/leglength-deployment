@@ -1,35 +1,29 @@
 # Reset from Monitoring v1 to Monitoring v2
 
-## Steps to Reset
+## Steps to Reset (Following CHANGES.md workflow)
 
-### 1. Stop Old Monitoring (v1)
+### 1. Generate Configuration from Template
 ```bash
 cd /dataNAS/people/arogya/projects/leglength-deployment
+sudo make setup
+```
+This generates `monitoring-v2/.env` from `config.env.template` (as per CHANGES.md).
+
+### 2. Stop Old Monitoring (v1)
+```bash
 cd monitoring && sudo docker compose down
 ```
 
-### 2. Clean Up Old Monitoring Containers/Volumes (Optional)
+### 3. Start Monitoring v2
 ```bash
-# Remove old monitoring containers and volumes
-cd monitoring && sudo docker compose down -v
-```
-
-### 3. Set Up Monitoring v2
-```bash
-cd /dataNAS/people/arogya/projects/leglength-deployment/monitoring-v2
-make setup
-```
-
-### 4. Start Monitoring v2
-```bash
-# From project root
+# From project root (recommended)
 make monitoring-start
 
 # Or from monitoring-v2 directory
 cd monitoring-v2 && make start
 ```
 
-### 5. Verify
+### 4. Verify
 ```bash
 make monitoring-status
 ```
@@ -37,15 +31,36 @@ make monitoring-status
 ## Quick Reset (All in One)
 
 ```bash
-# Stop old monitoring
-cd monitoring && sudo docker compose down
+# From project root
+cd /dataNAS/people/arogya/projects/leglength-deployment
 
-# Set up and start new monitoring
-cd ../monitoring-v2 && make setup && make start
+# 1. Generate configs (creates monitoring-v2/.env)
+sudo make setup
 
-# Verify
-cd .. && make monitoring-status
+# 2. Stop old monitoring
+cd monitoring && sudo docker compose down && cd ..
+
+# 3. Start monitoring-v2
+make monitoring-start
+
+# 4. Verify
+make monitoring-status
 ```
+
+## Using the Reset Command
+
+From `monitoring-v2/` directory:
+```bash
+cd monitoring-v2
+make reset
+```
+
+This will:
+1. Stop old monitoring (v1)
+2. Stop monitoring-v2 if running
+3. Check that .env exists (from `make setup`)
+4. Create data directories
+5. Start monitoring-v2
 
 ## What Gets Reset
 

@@ -15,6 +15,8 @@ services:
     image: prom/prometheus:latest
     container_name: prometheus-v2
     restart: unless-stopped
+    env_file:
+      - ./.env
     ports:
       - "${PROMETHEUS_PORT:-9033}:9090"
     command:
@@ -38,6 +40,8 @@ services:
     image: graphiteapp/graphite-statsd:latest
     container_name: graphite-v2
     restart: unless-stopped
+    env_file:
+      - ./.env
     ports:
       - "${GRAPHITE_PORT:-9038}:2003"         # Carbon line receiver
       - "${GRAPHITE_PICKLE_PORT:-9039}:2004"  # Carbon pickle receiver
@@ -60,6 +64,8 @@ services:
     image: grafana/grafana:latest
     container_name: grafana-v2
     restart: unless-stopped
+    env_file:
+      - ./.env
     ports:
       - "${GRAFANA_PORT:-9032}:3000"
     environment:
