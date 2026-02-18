@@ -199,14 +199,22 @@ orthanc-clear:
 	@printf "\n"
 	@printf "$(YELLOW)🗑️  Removing containers and volumes...$(RESET)\n"
 	@cd orthanc && docker compose down -v --remove-orphans 2>/dev/null || true
-	@printf "$(YELLOW)🗑️  Removing configuration...$(RESET)\n"
-	@cd orthanc && rm -f .env 2>/dev/null || true
 	@printf "$(YELLOW)🗑️  Clearing DICOM and database storage...$(RESET)\n"
 	@cd orthanc && if [ -f .env ]; then \
 		. ./.env && \
-		sudo rm -rf "$$DICOM_STORAGE"/* 2>/dev/null || rm -rf "$$DICOM_STORAGE"/* 2>/dev/null || true && \
-		sudo rm -rf "$$POSTGRES_STORAGE"/* 2>/dev/null || rm -rf "$$POSTGRES_STORAGE"/* 2>/dev/null || true; \
+		if [ -n "$$DICOM_STORAGE" ] && [ -d "$$DICOM_STORAGE" ]; then \
+			sudo rm -rf "$$DICOM_STORAGE"/* 2>/dev/null || rm -rf "$$DICOM_STORAGE"/* 2>/dev/null || true; \
+			printf "   ✅ Cleared DICOM storage: $$DICOM_STORAGE\n"; \
+		fi && \
+		if [ -n "$$POSTGRES_STORAGE" ] && [ -d "$$POSTGRES_STORAGE" ]; then \
+			sudo rm -rf "$$POSTGRES_STORAGE"/* 2>/dev/null || rm -rf "$$POSTGRES_STORAGE"/* 2>/dev/null || true; \
+			printf "   ✅ Cleared PostgreSQL storage: $$POSTGRES_STORAGE\n"; \
+		fi; \
+	else \
+		printf "   ⚠️  .env not found, skipping data directory cleanup\n"; \
 	fi
+	@printf "$(YELLOW)🗑️  Removing configuration...$(RESET)\n"
+	@cd orthanc && rm -f .env 2>/dev/null || true
 	@printf "\n"
 	@printf "$(GREEN)✅ Orthanc cleared$(RESET)\n"
 	@printf "\n"
