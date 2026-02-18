@@ -211,6 +211,7 @@ if [ ! -f "$MERCURE_JSON_TEMPLATE" ]; then
     "discard_folder": "/opt/mercure/data/discard",
     "processing_folder": "/opt/mercure/data/processing",
     "jobs_folder": "/opt/mercure/data/jobs",
+    "persistence_folder": "/opt/mercure/persistence",
     "router_scan_interval": 1,
     "dispatcher_scan_interval": 1,
     "cleaner_scan_interval": 60,
