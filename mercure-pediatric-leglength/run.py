@@ -291,6 +291,16 @@ def store_results_to_db(
         logger.debug("results_db not enabled, skipping database storage")
         return
     
+    # If study_uid is not provided, try to extract it from DICOM
+    if not study_uid:
+        try:
+            dicom_headers = pydicom.dcmread(dicom_path, stop_before_pixels=True)
+            study_uid = getattr(dicom_headers, "StudyInstanceUID", None)
+            if study_uid:
+                logger.info(f"Extracted study_uid from DICOM: {study_uid}")
+        except Exception as e:
+            logger.debug(f"Could not read DICOM to extract study_uid: {e}")
+    
     if not study_uid:
         logger.warning("No study_uid available, cannot store results in database")
         return
