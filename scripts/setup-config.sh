@@ -466,8 +466,8 @@ if [ -f "$PROMETHEUS_TEMPLATE" ]; then
         < "$PROMETHEUS_TEMPLATE" \
         > "$PROMETHEUS_OUTPUT"
     
-    # Set secure permissions (contains passwords)
-    chmod 600 "$PROMETHEUS_OUTPUT"
+    # Set permissions: readable by container (644), but gitignored (contains passwords)
+    chmod 644 "$PROMETHEUS_OUTPUT"
     
     echo -e "  ${GREEN}✓${NC} monitoring-v2/config/prometheus/prometheus.yml created"
 else

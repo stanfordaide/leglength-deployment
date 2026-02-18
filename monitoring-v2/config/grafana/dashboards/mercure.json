@@ -1,0 +1,306 @@
+{
+  "title": "Mercure & AI Processing - Operational Metrics",
+  "tags": ["mercure", "ai", "processing"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "AI Inferences Started",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "sumSeries(leglength.inference.started)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": null, "color": "green"}
+            ]
+          },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "AI Inferences Completed",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "sumSeries(leglength.inference.completed)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "AI Inferences Failed",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "sumSeries(leglength.inference.failed)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": null, "color": "green"},
+              {"value": 1, "color": "yellow"},
+              {"value": 5, "color": "red"}
+            ]
+          },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Success Rate",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "asPercent(sumSeries(leglength.inference.completed), sumSeries(leglength.inference.started))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": null, "color": "red"},
+              {"value": 80, "color": "yellow"},
+              {"value": 95, "color": "green"}
+            ]
+          },
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Inference Rate (per minute)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "sumSeries(derivative(leglength.inference.started))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "ops"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Average Processing Time (ms)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "averageSeries(leglength.inference.duration_ms)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Leg Length Measurements (cm)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "leglength.measurements.femur_cm",
+          "legendFormat": "Femur",
+          "refId": "A"
+        },
+        {
+          "target": "leglength.measurements.tibia_cm",
+          "legendFormat": "Tibia",
+          "refId": "B"
+        },
+        {
+          "target": "leglength.measurements.total_cm",
+          "legendFormat": "Total",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "lengthcm"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Mercure Router Metrics",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 12},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "sumSeries(mercure.router.*.received)",
+          "legendFormat": "Received",
+          "refId": "A"
+        },
+        {
+          "target": "sumSeries(mercure.router.*.sent)",
+          "legendFormat": "Sent",
+          "refId": "B"
+        },
+        {
+          "target": "sumSeries(mercure.router.*.failed)",
+          "legendFormat": "Failed",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Mercure Dispatcher Metrics",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 12},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "sumSeries(mercure.dispatcher.*.processed)",
+          "legendFormat": "Processed",
+          "refId": "A"
+        },
+        {
+          "target": "sumSeries(mercure.dispatcher.*.queued)",
+          "legendFormat": "Queued",
+          "refId": "B"
+        },
+        {
+          "target": "sumSeries(mercure.dispatcher.*.errors)",
+          "legendFormat": "Errors",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Processing Time Distribution (ms)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "targets": [
+        {
+          "target": "leglength.inference.duration_ms",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "ms"
+        }
+      }
+    }
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "weekStart": ""
+}

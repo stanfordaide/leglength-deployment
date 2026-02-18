@@ -1,0 +1,367 @@
+{
+  "title": "Orthanc PACS - Operational Metrics",
+  "tags": ["orthanc", "pacs", "dicom"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Studies Count",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_count_studies",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": null, "color": "green"},
+              {"value": 100, "color": "yellow"},
+              {"value": 500, "color": "red"}
+            ]
+          },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Series Count",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_count_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Instances Count",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_count_instances",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Patients Count",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_count_patients",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Jobs Status",
+      "type": "bargauge",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_jobs_completed",
+          "legendFormat": "Completed",
+          "refId": "A"
+        },
+        {
+          "expr": "orthanc_jobs_failed",
+          "legendFormat": "Failed",
+          "refId": "B"
+        },
+        {
+          "expr": "orthanc_jobs_pending",
+          "legendFormat": "Pending",
+          "refId": "C"
+        },
+        {
+          "expr": "orthanc_jobs_running",
+          "legendFormat": "Running",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "short"
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Storage Usage (MB)",
+      "type": "bargauge",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_disk_size_mb",
+          "legendFormat": "Disk Size",
+          "refId": "A"
+        },
+        {
+          "expr": "orthanc_storage_cache_size_mb",
+          "legendFormat": "Storage Cache",
+          "refId": "B"
+        },
+        {
+          "expr": "orthanc_dicom_cache_size_mb",
+          "legendFormat": "DICOM Cache",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "mbytes"
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Jobs Over Time",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(orthanc_jobs_completed[5m])",
+          "legendFormat": "Completed (rate)",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(orthanc_jobs_failed[5m])",
+          "legendFormat": "Failed (rate)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "ops"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Available DICOM Threads",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 20},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_available_dicom_threads",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": null, "color": "red"},
+              {"value": 1, "color": "yellow"},
+              {"value": 5, "color": "green"}
+            ]
+          },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Available HTTP Threads",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 20},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_available_http_threads_count",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 20},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_up_time_s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Storage Operations Duration (ms)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_storage_read_duration_ms",
+          "legendFormat": "Read Duration",
+          "refId": "A"
+        },
+        {
+          "expr": "orthanc_storage_create_duration_ms",
+          "legendFormat": "Create Duration",
+          "refId": "B"
+        },
+        {
+          "expr": "orthanc_store_dicom_duration_ms",
+          "legendFormat": "Store DICOM Duration",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "REST API Performance",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "orthanc_rest_api_duration_ms",
+          "legendFormat": "API Duration",
+          "refId": "A"
+        },
+        {
+          "expr": "orthanc_rest_api_active_requests",
+          "legendFormat": "Active Requests",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "ms"
+        }
+      }
+    }
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "weekStart": ""
+}

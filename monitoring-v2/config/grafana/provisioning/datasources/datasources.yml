@@ -6,6 +6,7 @@ apiVersion: 1
 datasources:
   # Prometheus - Orthanc metrics
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -18,6 +19,7 @@ datasources:
 
   # Graphite - Mercure metrics
   - name: Graphite
+    uid: graphite
     type: graphite
     access: proxy
     url: http://graphite:80
