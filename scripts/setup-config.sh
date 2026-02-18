@@ -429,10 +429,10 @@ MONITORING_DATA_PATH=${MONITORING_DATA_PATH}
 EOF
 echo -e "  ${GREEN}✓${NC} monitoring/.env created"
 
-# Generate Monitoring v2 .env
+# Generate Monitoring .env
 echo -e "${CYAN}Generating monitoring-v2/.env...${NC}"
 cat > "$REPO_ROOT/monitoring-v2/.env" << EOF
-# Monitoring v2 - Lightweight Metrics Collection
+# Monitoring - Metrics Collection Stack
 # Generated from config.env.template by setup-config.sh
 
 # Grafana
@@ -446,6 +446,7 @@ PROMETHEUS_PORT=${PROMETHEUS_PORT}
 # Graphite
 GRAPHITE_PORT=${GRAPHITE_PORT}
 GRAPHITE_PICKLE_PORT=${GRAPHITE_PICKLE_PORT}
+GRAPHITE_WEB_PORT=${GRAPHITE_WEB_PORT}
 EOF
 echo -e "  ${GREEN}✓${NC} monitoring-v2/.env created"
 

@@ -1,8 +1,6 @@
-# Monitoring v2 - Lightweight Metrics Collection
+# Monitoring - Metrics Collection Stack
 
 Standalone monitoring service that collects metrics from Orthanc and Mercure, using Graphite and Prometheus.
-
-**Note**: This is a standalone Docker Compose stack, independent from Orthanc, Mercure, and mercure-pediatric-leglength.
 
 ## Architecture
 
@@ -41,7 +39,7 @@ make start
 # 4. Access dashboards
 # Grafana: http://localhost:9032 (admin/admin123)
 # Prometheus: http://localhost:9033
-# Graphite: http://localhost:8080
+# Graphite: http://localhost:9041
 ```
 
 ## Pre-configured Sources
@@ -68,10 +66,10 @@ make start
 Already integrated! Use from the main directory:
 
 ```bash
-make monitoring-v2-start
-make monitoring-v2-stop
-make monitoring-v2-status
-make monitoring-v2-logs
+make monitoring-start
+make monitoring-stop
+make monitoring-status
+make monitoring-logs
 ```
 
 ## Python Client (for mercure-pediatric-leglength)

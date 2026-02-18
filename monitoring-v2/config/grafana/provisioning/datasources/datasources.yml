@@ -1,4 +1,4 @@
-# Grafana Datasources Configuration - Monitoring v2
+# Grafana Datasources Configuration
 # Pre-configured to read from Prometheus (Orthanc) and Graphite (Mercure)
 
 apiVersion: 1

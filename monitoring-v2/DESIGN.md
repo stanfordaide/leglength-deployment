@@ -1,4 +1,4 @@
-# Monitoring v2 - Lightweight Design
+# Monitoring - Design
 
 **Philosophy**: Keep it simple. Use Graphite for time-series metrics (like Mercure), Grafana for visualization, and operational metrics only.
 
@@ -75,7 +75,7 @@ orthanc.ai_results.received          # Counter: AI results received
 
 **Simple wrapper**:
 ```python
-# monitoring-v2/graphite_client.py
+# monitoring/graphite_client.py
 import graphyte
 import os
 
@@ -92,7 +92,7 @@ class GraphiteClient:
 
 **Usage in run.py**:
 ```python
-from monitoring_v2 import GraphiteClient
+from monitoring import GraphiteClient
 
 graphite = GraphiteClient()
 graphite.send("inference.started", 1)

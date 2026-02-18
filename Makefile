@@ -56,7 +56,7 @@ help:
 	@printf "    make mercure-debug   Show recent logs (troubleshooting)\n"
 	@printf "    make mercure-shell   Shell into Mercure container\n"
 	@printf "\n"
-	@printf "  $(GREEN)Monitoring$(RESET) - Lightweight Metrics (Graphite + Prometheus)\n"
+	@printf "  $(GREEN)Monitoring$(RESET) - Grafana, Prometheus, Graphite\n"
 	@printf "    make monitoring-start   Start monitoring stack\n"
 	@printf "    make monitoring-stop    Stop monitoring stack\n"
 	@printf "    make monitoring-restart Restart monitoring stack\n"
@@ -225,7 +225,7 @@ mercure-shell:
 	@cd /opt/mercure && sudo docker compose exec mercure_ui bash
 
 # =============================================================================
-# MONITORING - Lightweight Metrics Collection (monitoring-v2)
+# MONITORING - Metrics Collection (Grafana, Prometheus, Graphite)
 # =============================================================================
 
 monitoring-start:

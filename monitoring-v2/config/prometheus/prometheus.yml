@@ -1,11 +1,11 @@
-# Prometheus Configuration - Monitoring v2
+# Prometheus Configuration
 # Pre-configured to scrape Orthanc and other services
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    monitor: 'leglength-deployment-v2'
+    monitor: 'leglength-deployment'
 
 scrape_configs:
   # =============================================================================

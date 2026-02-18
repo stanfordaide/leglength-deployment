@@ -1,10 +1,11 @@
-# Monitoring v2 - Lightweight Metrics Collection
+# Monitoring - Metrics Collection Stack
 #
 # PORT SCHEME (9030 series):
 #   - 9032: Grafana
 #   - 9033: Prometheus
-#   - 9038: Graphite (Carbon)
-#   - 9039: Graphite Pickle
+#   - 9038: Graphite (Carbon line receiver)
+#   - 9039: Graphite Pickle receiver
+#   - 9041: Graphite Web UI
 
 services:
   # =============================================================================
@@ -13,7 +14,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: prometheus-v2
+    container_name: prometheus
     restart: unless-stopped
     env_file:
       - ./.env
@@ -38,14 +39,14 @@ services:
   # Graphite for Mercure metrics (Mercure has native Graphite support)
   graphite:
     image: graphiteapp/graphite-statsd:latest
-    container_name: graphite-v2
+    container_name: graphite
     restart: unless-stopped
     env_file:
       - ./.env
     ports:
       - "${GRAPHITE_PORT:-9038}:2003"         # Carbon line receiver
       - "${GRAPHITE_PICKLE_PORT:-9039}:2004"  # Carbon pickle receiver
-      - "8080:80"                              # Graphite web UI
+      - "${GRAPHITE_WEB_PORT:-9041}:80"       # Graphite web UI
     volumes:
       - graphite_data:/opt/graphite/storage
     networks:
@@ -62,7 +63,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: grafana-v2
+    container_name: grafana
     restart: unless-stopped
     env_file:
       - ./.env
