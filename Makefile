@@ -225,6 +225,18 @@ orthanc-clear:
 mercure-start:
 	@printf "$(CYAN)Starting Mercure...$(RESET)\n"
 	@if [ -d "/opt/mercure" ]; then \
+		printf "$(CYAN)Ensuring data directories exist with correct permissions...$(RESET)\n"; \
+		if id -u mercure >/dev/null 2>&1; then \
+			MERCURE_UID=$$(id -u mercure); \
+			MERCURE_GID=$$(id -g mercure); \
+		else \
+			MERCURE_UID=1000; \
+			MERCURE_GID=1000; \
+		fi; \
+		sudo mkdir -p /opt/mercure/data/{incoming,studies,outgoing,success,error,discard,processing,jobs}; \
+		sudo mkdir -p /opt/mercure/persistence; \
+		sudo chown -R $$MERCURE_UID:$$MERCURE_GID /opt/mercure/data /opt/mercure/persistence 2>/dev/null || \
+			sudo chmod -R 777 /opt/mercure/data /opt/mercure/persistence; \
 		cd /opt/mercure && sudo docker compose up -d; \
 	else \
 		chmod +x scripts/install-mercure.sh && ./scripts/install-mercure.sh -y; \
