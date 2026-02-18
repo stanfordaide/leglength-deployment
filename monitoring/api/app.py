@@ -144,9 +144,22 @@ def init_db():
             modlink_send_success BOOLEAN,
             modlink_send_error TEXT,
             
+            -- Full AI Results (JSON)
+            results JSONB,
+            
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
         );
+        
+        -- Add results column if it doesn't exist (migration)
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                           WHERE table_name='study_workflows' AND column_name='results') THEN
+                ALTER TABLE study_workflows ADD COLUMN results JSONB;
+            END IF;
+        END
+        $$;
         
         CREATE INDEX IF NOT EXISTS idx_workflows_created ON study_workflows(created_at);
     """)
@@ -592,23 +605,47 @@ def track_ai_results():
     """Record AI results received back - also implies MERCURE was successful"""
     data = request.json or {}
     study_id = data.get('study_id')
+    study_uid = data.get('study_uid')
+    results = data.get('results')
     
-    app.logger.info(f"[track/ai-results] CALLED for study {study_id}")
+    app.logger.info(f"[track/ai-results] CALLED for study {study_id or study_uid}")
     
     conn = get_db()
     cur = conn.cursor()
     
     # If we got AI results back, MERCURE must have succeeded
     # This handles cases where job polling missed the completion
-    cur.execute("""
-        UPDATE study_workflows 
-        SET ai_results_received_at = NOW(), 
-            ai_results_received = TRUE,
-            mercure_sent_at = COALESCE(mercure_sent_at, NOW()),
-            mercure_send_success = TRUE,
-            updated_at = NOW()
-        WHERE study_id = %s
-    """, (study_id,))
+    # Also save the results JSON if provided
+    
+    import json
+    results_json = json.dumps(results) if results else None
+    
+    if study_id:
+        cur.execute("""
+            UPDATE study_workflows 
+            SET ai_results_received_at = NOW(), 
+                ai_results_received = TRUE,
+                mercure_sent_at = COALESCE(mercure_sent_at, NOW()),
+                mercure_send_success = TRUE,
+                results = COALESCE(%s, results),
+                updated_at = NOW()
+            WHERE study_id = %s
+        """, (results_json, study_id))
+    elif study_uid:
+        cur.execute("""
+            UPDATE study_workflows 
+            SET ai_results_received_at = NOW(), 
+                ai_results_received = TRUE,
+                mercure_sent_at = COALESCE(mercure_sent_at, NOW()),
+                mercure_send_success = TRUE,
+                results = COALESCE(%s, results),
+                updated_at = NOW()
+            WHERE study_instance_uid = %s
+        """, (results_json, study_uid))
+    else:
+        app.logger.error("[track/ai-results] No study_id or study_uid provided")
+        conn.close()
+        return jsonify({'error': 'study_id or study_uid required'}), 400
     
     conn.commit()
     cur.close()
