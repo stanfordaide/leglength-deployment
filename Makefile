@@ -408,6 +408,13 @@ setup-config:
 		exit 1; \
 	fi
 	@./scripts/setup-config.sh
+	@if [ -f mercure/config-generated/mercure.json ] && [ -d /opt/mercure/config ]; then \
+		printf "$(CYAN)Copying mercure.json to /opt/mercure/config/...$(RESET)\n"; \
+		sudo cp mercure/config-generated/mercure.json /opt/mercure/config/mercure.json && \
+		sudo chown mercure:mercure /opt/mercure/config/mercure.json 2>/dev/null || \
+		sudo chmod 644 /opt/mercure/config/mercure.json; \
+		printf "$(GREEN)✅ mercure.json copied to /opt/mercure/config/$(RESET)\n"; \
+	fi
 	@printf "$(GREEN)✅ All configs generated from config.env$(RESET)\n"
 
 # =============================================================================

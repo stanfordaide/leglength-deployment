@@ -285,8 +285,8 @@ if [ ! -f "$MERCURE_JSON_TEMPLATE" ]; then
     "modules": {
         "PediatricLegLength": {
             "docker_tag": "stanfordaide/pediatric-leglength:latest",
-            "additional_volumes": "{\"${MONITORING_DATA_PATH}\": {\"bind\": \"${MONITORING_DATA_PATH}\", \"mode\": \"rw\"}}",
-            "environment": "{\"MONITORING_DATA_PATH\": \"${MONITORING_DATA_PATH}\"}",
+            "additional_volumes": "",
+            "environment": "",
             "docker_arguments": "",
             "settings": {
                 "models": [
