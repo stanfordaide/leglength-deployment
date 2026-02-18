@@ -219,6 +219,47 @@ def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_d
         raise
 
 
+def persist_results(output_dir: Path, series_id: str, accession_number: str, logger: logging.Logger):
+    """
+    Copy results to persistent storage if configured via MONITORING_DATA_PATH env var.
+    This ensures results are saved even after the Mercure job folder is cleared.
+    """
+    monitoring_path = os.environ.get('MONITORING_DATA_PATH')
+    if not monitoring_path:
+        logger.debug("MONITORING_DATA_PATH not set, skipping persistence")
+        return
+
+    try:
+        # Create a dedicated directory for AI results
+        persist_root = Path(monitoring_path) / 'ai_results'
+        
+        # Folder name: {Accession}_{SeriesID}_{Timestamp}
+        # Clean up IDs to be filesystem safe
+        safe_acc = "".join(c for c in (accession_number or "unknown") if c.isalnum() or c in ('-','_'))
+        safe_series = "".join(c for c in series_id if c.isalnum() or c in ('-','_'))
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        
+        folder_name = f"{safe_acc}_{safe_series}_{timestamp}"
+        target_dir = persist_root / folder_name
+        
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Persisting results to: {target_dir}")
+        
+        # Copy JSON files from output_dir
+        count = 0
+        for item in output_dir.iterdir():
+            if item.is_file() and item.suffix.lower() == '.json':
+                shutil.copy2(item, target_dir / item.name)
+                count += 1
+                
+        logger.info(f"Successfully persisted {count} JSON files")
+        
+    except Exception as e:
+        logger.error(f"Failed to persist results: {e}")
+
+
+
 def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logging.Logger) -> dict:
     """Process a single DICOM image and return comprehensive results."""
     
@@ -577,6 +618,9 @@ def main():
                     )
                 except Exception as e:
                     logger.error(f"Failed to save comprehensive JSON results: {e}")
+                
+                # Persist results to monitoring storage
+                persist_results(args.output_dir, series_id, accession_number, logger)
                 
                 # Record metrics
                 if monitor:

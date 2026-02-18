@@ -25,13 +25,18 @@ class Harvester:
         """
         Recursively find all .json files in the data path.
         Returns files sorted by modification time (oldest first).
+        Ignores 'ai_results' directory.
         """
         if not self.data_path.exists():
             logger.warning(f"Data path {self.data_path} does not exist.")
             return []
             
         files = []
-        for root, _, filenames in os.walk(self.data_path):
+        for root, dirs, filenames in os.walk(self.data_path):
+            # Modify dirs in-place to skip ai_results directory
+            if 'ai_results' in dirs:
+                dirs.remove('ai_results')
+                
             for filename in filenames:
                 if filename.endswith('.json'):
                     files.append(Path(root) / filename)

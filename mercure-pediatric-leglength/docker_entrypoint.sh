@@ -32,6 +32,17 @@ run_as_user() {
         # Ensure output directory exists
         mkdir -p /output
         
+        # Handle MONITORING_DATA_PATH if set
+        if [ -n "$MONITORING_DATA_PATH" ]; then
+            echo "-- Handling monitoring path: $MONITORING_DATA_PATH"
+            mkdir -p "$MONITORING_DATA_PATH"
+            
+            if ! chown $target_uid:$target_gid "$MONITORING_DATA_PATH" 2>/dev/null; then
+                echo "-- Warning: Cannot change ownership of monitoring path, attempting chmod 777"
+            fi
+            chmod 777 "$MONITORING_DATA_PATH" 2>/dev/null || true
+        fi
+        
         # Try to fix ownership, but don't fail if we can't
         if ! chown $target_uid:$target_gid /output 2>/dev/null; then
             echo "-- Warning: Cannot change ownership of /output (this is often normal with mounted volumes)"
