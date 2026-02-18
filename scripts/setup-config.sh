@@ -450,6 +450,25 @@ GRAPHITE_WEB_PORT=${GRAPHITE_WEB_PORT}
 EOF
 echo -e "  ${GREEN}✓${NC} monitoring-v2/.env created"
 
+# Generate Monitoring v2 Prometheus config from template
+echo -e "${CYAN}Generating monitoring-v2/config/prometheus/prometheus.yml...${NC}"
+
+PROMETHEUS_TEMPLATE="$REPO_ROOT/monitoring-v2/config/prometheus/prometheus.yml.template"
+PROMETHEUS_OUTPUT="$REPO_ROOT/monitoring-v2/config/prometheus/prometheus.yml"
+
+if [ -f "$PROMETHEUS_TEMPLATE" ]; then
+    export DOCKER_HOST_GATEWAY
+    export ORTHANC_WEB_PORT
+    
+    envsubst '${DOCKER_HOST_GATEWAY} ${ORTHANC_WEB_PORT}' \
+        < "$PROMETHEUS_TEMPLATE" \
+        > "$PROMETHEUS_OUTPUT"
+    
+    echo -e "  ${GREEN}✓${NC} monitoring-v2/config/prometheus/prometheus.yml created"
+else
+    echo -e "  ${YELLOW}⚠${NC} Template not found: $PROMETHEUS_TEMPLATE (using static config)"
+fi
+
 # =============================================================================
 # Set Secure File Permissions
 # =============================================================================

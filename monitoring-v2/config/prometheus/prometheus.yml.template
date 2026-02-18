@@ -1,5 +1,6 @@
 # Prometheus Configuration
 # Pre-configured to scrape Orthanc and other services
+# Generated from config.env.template by setup-config.sh
 
 global:
   scrape_interval: 15s
@@ -22,7 +23,7 @@ scrape_configs:
   
   - job_name: 'orthanc'
     static_configs:
-      - targets: ['172.17.0.1:9011']
+      - targets: ['${DOCKER_HOST_GATEWAY}:${ORTHANC_WEB_PORT}']
     metrics_path: '/tools/metrics-prometheus'
     scrape_interval: 30s
     scrape_timeout: 10s
