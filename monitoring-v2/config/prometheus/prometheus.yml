@@ -1,0 +1,42 @@
+# Prometheus Configuration - Monitoring v2
+# Pre-configured to scrape Orthanc and other services
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'leglength-deployment-v2'
+
+scrape_configs:
+  # =============================================================================
+  # SELF-MONITORING
+  # =============================================================================
+  
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # =============================================================================
+  # ORTHANC PACS - Built-in Prometheus metrics
+  # =============================================================================
+  
+  - job_name: 'orthanc'
+    static_configs:
+      - targets: ['host.docker.internal:9011']
+    metrics_path: '/tools/metrics-prometheus'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'orthanc'
+
+  # =============================================================================
+  # GRAFANA (optional - for monitoring Grafana itself)
+  # =============================================================================
+  
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 60s

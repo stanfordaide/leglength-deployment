@@ -1,0 +1,26 @@
+# Grafana Datasources Configuration - Monitoring v2
+# Pre-configured to read from Prometheus (Orthanc) and Graphite (Mercure)
+
+apiVersion: 1
+
+datasources:
+  # Prometheus - Orthanc metrics
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+
+  # Graphite - Mercure metrics
+  - name: Graphite
+    type: graphite
+    access: proxy
+    url: http://graphite:80
+    editable: false
+    jsonData:
+      graphiteVersion: "1.1"

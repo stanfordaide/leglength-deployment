@@ -1,0 +1,93 @@
+# Monitoring v2 - Lightweight Metrics Collection
+#
+# PORT SCHEME (9030 series):
+#   - 9032: Grafana
+#   - 9033: Prometheus
+#   - 9038: Graphite (Carbon)
+#   - 9039: Graphite Pickle
+
+services:
+  # =============================================================================
+  # METRICS COLLECTION
+  # =============================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-v2
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9033}:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - monitoring-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Graphite for Mercure metrics (Mercure has native Graphite support)
+  graphite:
+    image: graphiteapp/graphite-statsd:latest
+    container_name: graphite-v2
+    restart: unless-stopped
+    ports:
+      - "${GRAPHITE_PORT:-9038}:2003"         # Carbon line receiver
+      - "${GRAPHITE_PICKLE_PORT:-9039}:2004"  # Carbon pickle receiver
+      - "8080:80"                              # Graphite web UI
+    volumes:
+      - graphite_data:/opt/graphite/storage
+    networks:
+      - monitoring-net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2003"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =============================================================================
+  # VISUALIZATION
+  # =============================================================================
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-v2
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-9032}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS:-admin123}
+      - GF_INSTALL_PLUGINS=
+      - GF_SERVER_ROOT_URL=http://localhost:9032
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - monitoring-net
+    depends_on:
+      - prometheus
+      - graphite
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  monitoring-net:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  graphite_data:
+  grafana_data:

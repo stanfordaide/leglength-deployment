@@ -85,10 +85,10 @@ local function sendInstance(studyId, instanceId, destination)
             destination = destination,
             error = errorMsg,
         })
-        -- Record send failure in tracking database
-        if Tracker.sendAttempted then
-            Tracker.sendAttempted(studyId, destination, false, errorMsg)
-        end
+        -- Record send failure in tracking database (DISABLED - tracking disabled)
+        -- if Tracker.sendAttempted then
+        --     Tracker.sendAttempted(studyId, destination, false, errorMsg)
+        -- end
     else
         -- Send succeeded - result is the Orthanc job ID
         local jobId = tostring(result)
@@ -98,16 +98,16 @@ local function sendInstance(studyId, instanceId, destination)
             jobId = jobId,
         })
         
-        -- Record send ATTEMPT (status=nil means pending)
+        -- Record send ATTEMPT (DISABLED - tracking disabled)
         -- We don't mark as success yet - we wait for the job poller to confirm completion
-        if Tracker.sendAttempted then
-            Tracker.sendAttempted(studyId, destination, nil, nil)
-        end
+        -- if Tracker.sendAttempted then
+        --     Tracker.sendAttempted(studyId, destination, nil, nil)
+        -- end
         
-        -- Register the job ID for async polling of actual delivery status
-        if Tracker.registerPendingJob then
-            Tracker.registerPendingJob(jobId, studyId, destination)
-        end
+        -- Register the job ID for async polling (DISABLED - tracking disabled)
+        -- if Tracker.registerPendingJob then
+        --     Tracker.registerPendingJob(jobId, studyId, destination)
+        -- end
     end
     
     return success, result
@@ -171,11 +171,11 @@ local function routeToAI(studyId, matchResult)
     local destination = getDestination("MERCURE")
     local success, jobId = sendInstance(studyId, instanceId, destination)
     
-    -- For MERCURE sends, also register as a pending job to track AI processing start
+    -- For MERCURE sends, also register as a pending job (DISABLED - tracking disabled)
     -- The job completes when Mercure finishes sending to the AI module
-    if success and jobId and Tracker.registerPendingJob then
-        Tracker.registerPendingJob(jobId, studyId, "MERCURE")
-    end
+    -- if success and jobId and Tracker.registerPendingJob then
+    --     Tracker.registerPendingJob(jobId, studyId, "MERCURE")
+    -- end
     
     return success
 end
@@ -272,10 +272,10 @@ function Router.execute(studyId, matchResult)
         -- AI result → send to final destinations
         Log.info("Routing AI_RESULT to final destinations", { studyId = studyId })
         
-        -- Track that AI results were received
-        if Tracker.aiResultsReceived then
-            Tracker.aiResultsReceived(studyId)
-        end
+        -- Track that AI results were received (DISABLED - tracking disabled)
+        -- if Tracker.aiResultsReceived then
+        --     Tracker.aiResultsReceived(studyId)
+        -- end
         
         return routeToFinalDestinations(studyId, matchResult)
         
@@ -509,13 +509,13 @@ function Router.freshReprocess(studyId, processFunc)
     -- Step 2: Clear AI output
     local deletedCount, deletedSeries = Router.clearAIOutput(studyId)
     
-    -- Step 3: Reset tracking state
-    if Tracker and Tracker.resetStudy then
-        Log.info("Resetting tracking state", { studyId = studyId })
-        Tracker.resetStudy(studyId)
-    else
-        Log.warn("Tracker.resetStudy not available, skipping tracking reset")
-    end
+    -- Step 3: Reset tracking state (DISABLED - tracking disabled)
+    -- if Tracker and Tracker.resetStudy then
+    --     Log.info("Resetting tracking state", { studyId = studyId })
+    --     Tracker.resetStudy(studyId)
+    -- else
+    --     Log.warn("Tracker.resetStudy not available, skipping tracking reset")
+    -- end
     
     -- Step 4: Re-fetch tags (in case clearing changed something)
     tags = getStudyTags(studyId)

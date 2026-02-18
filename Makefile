@@ -56,7 +56,7 @@ help:
 	@printf "    make mercure-debug   Show recent logs (troubleshooting)\n"
 	@printf "    make mercure-shell   Shell into Mercure container\n"
 	@printf "\n"
-	@printf "  $(GREEN)Monitoring$(RESET) - Grafana, Prometheus, Workflow UI\n"
+	@printf "  $(GREEN)Monitoring$(RESET) - Lightweight Metrics (Graphite + Prometheus)\n"
 	@printf "    make monitoring-start   Start monitoring stack\n"
 	@printf "    make monitoring-stop    Stop monitoring stack\n"
 	@printf "    make monitoring-restart Restart monitoring stack\n"
@@ -96,7 +96,7 @@ status:
 	@cd /opt/mercure && sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
 	@printf "\n"
 	@printf "$(BOLD)$(GREEN)▸ Monitoring$(RESET)\n"
-	@cd monitoring && sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
+	@cd monitoring-v2 && sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || printf "  Not running\n"
 	@printf "\n"
 	@printf "$(BOLD)$(GREEN)▸ AI Module$(RESET)\n"
 	@sudo docker images stanfordaide/pediatric-leglength --format "  {{.Repository}}:{{.Tag}}  ({{.Size}}, created {{.CreatedSince}})" 2>/dev/null || printf "  Image not built\n"
@@ -225,43 +225,34 @@ mercure-shell:
 	@cd /opt/mercure && sudo docker compose exec mercure_ui bash
 
 # =============================================================================
-# MONITORING - Grafana, Prometheus, Workflow UI
+# MONITORING - Lightweight Metrics Collection (monitoring-v2)
 # =============================================================================
 
 monitoring-start:
 	@printf "$(CYAN)Starting Monitoring stack...$(RESET)\n"
-	@cd monitoring && sudo docker compose up -d
+	@cd monitoring-v2 && make start
 	@printf "$(GREEN)✅ Monitoring started$(RESET)\n"
 
 monitoring-stop:
 	@printf "$(YELLOW)Stopping Monitoring stack...$(RESET)\n"
-	@cd monitoring && sudo docker compose down
+	@cd monitoring-v2 && make stop
 	@printf "$(YELLOW)Monitoring stopped$(RESET)\n"
 
 monitoring-restart: monitoring-stop monitoring-start
 
 monitoring-status:
 	@printf "$(CYAN)Monitoring Status:$(RESET)\n"
-	@cd monitoring && sudo docker compose ps
-	@printf "\n"
-	@printf "$(CYAN)Service Health:$(RESET)\n"
-	@curl -sf http://localhost:9032/api/health 2>/dev/null && printf "  Grafana:    $(GREEN)OK$(RESET)\n" || printf "  Grafana:    $(RED)DOWN$(RESET)\n"
-	@curl -sf http://localhost:9033/-/healthy 2>/dev/null && printf "  Prometheus: $(GREEN)OK$(RESET)\n" || printf "  Prometheus: $(RED)DOWN$(RESET)\n"
-	@curl -sf http://localhost:9031/health 2>/dev/null && printf "  Workflow API: $(GREEN)OK$(RESET)\n" || printf "  Workflow API: $(RED)DOWN$(RESET)\n"
-	@cd monitoring && sudo docker compose ps harvester --format "{{.State}}" | grep -q "running" && printf "  Harvester:    $(GREEN)OK$(RESET)\n" || printf "  Harvester:    $(RED)DOWN$(RESET)\n"
+	@cd monitoring-v2 && make status
 
 monitoring-logs:
-	@cd monitoring && sudo docker compose logs -f --tail=100
-
-harvester-logs:
-	@cd monitoring && sudo docker compose logs -f --tail=100 harvester
+	@cd monitoring-v2 && make logs
 
 monitoring-debug:
 	@printf "$(CYAN)Monitoring Debug Info:$(RESET)\n"
 	@printf "\n$(BOLD)Container Status:$(RESET)\n"
-	@cd monitoring && sudo docker compose ps -a
+	@cd monitoring-v2 && sudo docker compose ps -a
 	@printf "\n$(BOLD)Recent Logs:$(RESET)\n"
-	@cd monitoring && sudo docker compose logs --tail=30 2>/dev/null || printf "  No logs available\n"
+	@cd monitoring-v2 && sudo docker compose logs --tail=30 2>/dev/null || printf "  No logs available\n"
 
 # =============================================================================
 # AI MODULE - Docker Image (Build Artifact)
@@ -336,7 +327,7 @@ clean:
 	@read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@cd orthanc && docker compose down 2>/dev/null || true
 	@cd /opt/mercure && sudo docker compose down 2>/dev/null || true
-	@cd monitoring && docker compose down 2>/dev/null || true
+	@cd monitoring-v2 && docker compose down 2>/dev/null || true
 	@printf "$(GREEN)✅ All containers stopped. Data preserved.$(RESET)\n"
 
 clean-all:
@@ -354,7 +345,7 @@ clean-all:
 	@printf "$(YELLOW)Stopping services...$(RESET)\n"
 	@cd orthanc && sudo docker compose down -v 2>/dev/null || true
 	@cd /opt/mercure && sudo docker compose down -v 2>/dev/null || true
-	@cd monitoring && sudo docker compose down -v 2>/dev/null || true
+	@cd monitoring-v2 && sudo docker compose down -v 2>/dev/null || true
 	@printf "$(YELLOW)Removing Mercure...$(RESET)\n"
 	@sudo rm -rf /opt/mercure
 	@printf "$(YELLOW)Removing Orthanc data...$(RESET)\n"
@@ -363,7 +354,7 @@ clean-all:
 	@sudo rm -rf /home/orthanc/postgres-data
 	@printf "$(YELLOW)Removing generated configs...$(RESET)\n"
 	@rm -f orthanc/.env orthanc/config/orthanc.json
-	@rm -f monitoring/.env
+	@rm -f monitoring-v2/.env
 	@rm -rf mercure/config-generated/
 	@rm -f config.env
 	@printf "$(YELLOW)Docker cleanup...$(RESET)\n"

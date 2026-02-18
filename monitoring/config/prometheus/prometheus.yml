@@ -71,11 +71,13 @@ scrape_configs:
   # EXTERNAL SERVICES (configure IPs/hostnames as needed)
   # =============================================================================
   
-  # Orthanc PACS (if Orthanc prometheus plugin is enabled)
-  # - job_name: 'orthanc'
-  #   static_configs:
-  #     - targets: ['host.docker.internal:8042']
-  #   metrics_path: '/metrics'
+  # Orthanc PACS - built-in Prometheus metrics endpoint
+  - job_name: 'orthanc'
+    static_configs:
+      - targets: ['host.docker.internal:9011']
+    metrics_path: '/tools/metrics-prometheus'
+    scrape_interval: 30s
+    scrape_timeout: 10s
   
   # Grafana
   - job_name: 'grafana'

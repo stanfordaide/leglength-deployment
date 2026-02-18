@@ -482,23 +482,10 @@ def main():
     
     config = load_config(args.input_dir, logger)
     
-    # Initialize monitoring (optional)
-    try:
-        logger.info("Attempting to initialize monitoring...")
-        from monitoring import MonitorManager
-        
-        # Pass output_dir to config for MercureBackend
-        config['output_dir'] = str(args.output_dir)
-        
-        monitor = MonitorManager(config, logger)
-        logger.info(f"Monitoring initialization completed. Enabled: {monitor.is_enabled()}")
-    except ImportError:
-        logger.warning("Monitoring module not available - monitoring disabled")
-        monitor = None
-    except Exception as e:
-        logger.warning(f"Failed to initialize monitoring: {e}")
-        logger.debug("Full monitoring error:", exc_info=True)
-        monitor = None
+    # Initialize monitoring (DISABLED)
+    # Monitoring has been disabled - metrics will be emitted directly to Graphite instead
+    monitor = None
+    logger.info("Monitoring disabled - metrics will be emitted to Graphite via Mercure")
     
     # Validate configuration
     validation_errors = validate_config(config, logger)

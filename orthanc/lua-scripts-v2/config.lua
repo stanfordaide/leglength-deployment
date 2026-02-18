@@ -176,8 +176,8 @@ Config.FEATURES = {
     -- Master switch: if false, no routing happens (for maintenance)
     ROUTING_ENABLED = true,
     
-    -- Track workflows in database?
-    TRACKING_ENABLED = true,
+    -- Track workflows in database? (DISABLED - will use Prometheus metrics instead)
+    TRACKING_ENABLED = false,
     
     -- Send to AI (MERCURE)?
     AI_PROCESSING_ENABLED = true,

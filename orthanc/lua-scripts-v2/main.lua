@@ -169,10 +169,10 @@ function OnStableStudy(studyId, tags, metadata, origin)
         description = Utils.safeGet(tags, "StudyDescription", ""),
     })
     
-    -- Track that we received this study
-    if Tracker.studyReceived then
-        Tracker.studyReceived(studyId, tags)
-    end
+    -- Track that we received this study (DISABLED - tracking disabled)
+    -- if Tracker.studyReceived then
+    --     Tracker.studyReceived(studyId, tags)
+    -- end
     
     -- Get instance-level details
     local instances = getInstancesWithTags(studyId)
@@ -222,9 +222,10 @@ function OnDeletedStudy(studyId)
     
     Log.info("OnDeletedStudy triggered", { studyId = studyId })
     
-    if Tracker.studyDeleted then
-        Tracker.studyDeleted(studyId)
-    end
+    -- Track study deletion (DISABLED - tracking disabled)
+    -- if Tracker.studyDeleted then
+    --     Tracker.studyDeleted(studyId)
+    -- end
 end
 
 --
