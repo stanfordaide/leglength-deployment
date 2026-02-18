@@ -459,10 +459,15 @@ PROMETHEUS_OUTPUT="$REPO_ROOT/monitoring-v2/config/prometheus/prometheus.yml"
 if [ -f "$PROMETHEUS_TEMPLATE" ]; then
     export DOCKER_HOST_GATEWAY
     export ORTHANC_WEB_PORT
+    export ORTHANC_ADMIN_USER
+    export ORTHANC_ADMIN_PASS
     
-    envsubst '${DOCKER_HOST_GATEWAY} ${ORTHANC_WEB_PORT}' \
+    envsubst '${DOCKER_HOST_GATEWAY} ${ORTHANC_WEB_PORT} ${ORTHANC_ADMIN_USER} ${ORTHANC_ADMIN_PASS}' \
         < "$PROMETHEUS_TEMPLATE" \
         > "$PROMETHEUS_OUTPUT"
+    
+    # Set secure permissions (contains passwords)
+    chmod 600 "$PROMETHEUS_OUTPUT"
     
     echo -e "  ${GREEN}✓${NC} monitoring-v2/config/prometheus/prometheus.yml created"
 else

@@ -27,20 +27,30 @@ Standalone monitoring service that collects metrics from Orthanc and Mercure, us
 ## Quick Start
 
 ```bash
-# 1. Setup
+# 1. Setup (generates .env and prometheus.yml from templates)
 make setup
 
-# 2. Edit .env (optional)
-nano .env
+# 2. Edit config.env if needed (e.g., DOCKER_HOST_GATEWAY, credentials)
+nano config.env
 
-# 3. Start services
+# 3. Regenerate configs if you changed config.env
+make setup
+
+# 4. Start services
 make start
 
-# 4. Access dashboards
+# 5. Access dashboards
 # Grafana: http://localhost:9032 (admin/admin123)
 # Prometheus: http://localhost:9033
 # Graphite: http://localhost:9041
 ```
+
+## Configuration
+
+- **`.env`**: Generated from `config.env.template` by `make setup` (contains ports)
+- **`config/prometheus/prometheus.yml`**: Generated from `config/prometheus/prometheus.yml.template` by `make setup` (contains Orthanc credentials)
+  - **Note**: `prometheus.yml` is gitignored because it contains passwords
+  - Always regenerate it with `make setup` after changing `config.env`
 
 ## Pre-configured Sources
 

@@ -5,6 +5,7 @@ config.env
 orthanc/.env
 orthanc/config/orthanc.json
 monitoring/.env
+monitoring-v2/config/prometheus/prometheus.yml
 mercure/config-generated/
 
 # =============================================================================

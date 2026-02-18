@@ -26,6 +26,9 @@ scrape_configs:
     metrics_path: '/tools/metrics-prometheus'
     scrape_interval: 30s
     scrape_timeout: 10s
+    basic_auth:
+      username: 'orthanc_admin'
+      password: 'helloaide123'
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
