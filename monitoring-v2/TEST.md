@@ -35,7 +35,33 @@ curl -I http://localhost:9041
 curl "http://localhost:9033/api/v1/query?query=orthanc_count_studies"
 
 # Should return JSON with metric values
-# If empty, check if Orthanc is accessible at host.docker.internal:9011
+# If empty, check Prometheus targets status (see step 8)
+```
+
+### 5a. Find Docker Gateway IP (if Prometheus can't reach Orthanc)
+```bash
+# Method 1: Check docker0 interface
+ip addr show docker0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
+
+# Method 2: Check Docker bridge network gateway
+sudo docker network inspect bridge | grep Gateway | head -1
+
+# Method 3: From inside Prometheus container
+sudo docker exec prometheus ip route | grep default | awk '{print $3}'
+
+# Common values:
+# - Linux Docker: 172.17.0.1
+# - Docker Desktop: host.docker.internal (resolves automatically)
+# - Custom networks: Check with docker network inspect
+```
+
+### 5b. Test Connectivity from Prometheus Container
+```bash
+# Test if Prometheus can reach Orthanc
+sudo docker exec prometheus wget -qO- http://172.17.0.1:9011/tools/metrics-prometheus | head -5
+
+# If that fails, try the gateway IP you found above
+# Replace 172.17.0.1 with your actual gateway IP
 ```
 
 ### 6. Check Orthanc Metrics Endpoint Directly
@@ -62,9 +88,30 @@ curl "http://localhost:9041/render?target=test.metric&format=json&from=-1min"
 # View all scrape targets and their status
 curl "http://localhost:9033/api/v1/targets" | jq '.data.activeTargets[] | {job: .labels.job, health: .health, lastError: .lastError}'
 
+# Or without jq (simpler output):
+curl -s "http://localhost:9033/api/v1/targets" | grep -A 5 '"job":"orthanc"'
+
 # Should show:
-# - job: "prometheus" (self-monitoring)
+# - job: "prometheus" (self-monitoring) - should be "up"
 # - job: "orthanc" (should be "up" if Orthanc is reachable)
+#   - If "down", check the lastError field for details
+#   - Common issues: "connection refused" or "no such host"
+```
+
+### 8a. Fix Prometheus Config if Orthanc Target is Down
+```bash
+# If Orthanc target shows "down" with connection error:
+# 1. Find the correct gateway IP (see step 5a)
+# 2. Update config.env with correct DOCKER_HOST_GATEWAY
+# 3. Regenerate prometheus.yml:
+cd /opt/projects/leglength-deployment
+make setup
+
+# 4. Restart Prometheus:
+cd monitoring-v2
+sudo docker compose restart prometheus
+
+# 5. Wait 30 seconds, then check targets again (step 8)
 ```
 
 ## Verify Grafana Can Query Data

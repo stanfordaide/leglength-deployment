@@ -22,7 +22,7 @@ scrape_configs:
   
   - job_name: 'orthanc'
     static_configs:
-      - targets: ['172.17.0.1:9011']
+      - targets: ['172.20.0.1:9011']
     metrics_path: '/tools/metrics-prometheus'
     scrape_interval: 30s
     scrape_timeout: 10s
