@@ -531,6 +531,9 @@ def track_start():
     conn = get_db()
     cur = conn.cursor()
     
+    # We use ON CONFLICT to handle re-processing
+    # IMPORTANT: We reset status flags here to ensure a clean state
+    # If the study is truly an AI result, track_ai_results will be called shortly after
     cur.execute("""
         INSERT INTO study_workflows (study_id, study_instance_uid, patient_name, study_description)
         VALUES (%s, %s, %s, %s)
@@ -538,7 +541,21 @@ def track_start():
             patient_name = COALESCE(EXCLUDED.patient_name, study_workflows.patient_name),
             study_description = COALESCE(EXCLUDED.study_description, study_workflows.study_description),
             study_instance_uid = COALESCE(EXCLUDED.study_instance_uid, study_workflows.study_instance_uid),
-            updated_at = NOW()
+            updated_at = NOW(),
+            -- Reset flags to ensure we don't show stale status from previous runs
+            ai_results_received = FALSE,
+            ai_results_received_at = NULL,
+            mercure_send_success = NULL,
+            mercure_sent_at = NULL,
+            mercure_received_at = NULL,
+            mercure_processing_started_at = NULL,
+            mercure_processing_completed_at = NULL,
+            lpch_send_success = NULL,
+            lpch_sent_at = NULL,
+            lpcht_send_success = NULL,
+            lpcht_sent_at = NULL,
+            modlink_send_success = NULL,
+            modlink_sent_at = NULL
     """, (study_id, data.get('study_instance_uid'), data.get('patient_name'), data.get('study_description')))
     
     conn.commit()
