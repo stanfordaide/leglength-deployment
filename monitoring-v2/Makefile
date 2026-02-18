@@ -96,3 +96,19 @@ ps:
 
 up: start
 down: stop
+
+# Reset: Stop old monitoring and start fresh
+reset:
+	@echo "=== Resetting Monitoring v2 ==="
+	@echo "1. Stopping old monitoring (v1)..."
+	@cd ../monitoring && sudo docker compose down 2>/dev/null || echo "  Old monitoring not running"
+	@echo "2. Stopping monitoring-v2 if running..."
+	@docker compose down 2>/dev/null || echo "  Monitoring-v2 not running"
+	@echo "3. Setting up fresh monitoring-v2..."
+	@make setup
+	@echo "4. Starting monitoring-v2..."
+	@make start
+	@echo ""
+	@echo "✅ Reset complete! Monitoring v2 is running."
+	@echo "   Grafana: http://localhost:$${GRAFANA_PORT:-9032}"
+	@echo "   Prometheus: http://localhost:$${PROMETHEUS_PORT:-9033}"
