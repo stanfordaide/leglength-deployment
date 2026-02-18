@@ -356,14 +356,14 @@ class MetricsCollector:
             return None
         
         session = self.sessions[session_id]
-            config = session.get('config', {})
-            dicom_path = session.get('dicom_path')
-            
-            # Extract DICOM metadata
-            dicom_metadata = {}
-            if dicom_path:
-                dicom_metadata = self._extract_dicom_metadata(dicom_path)
-            
+        config = session.get('config', {})
+        dicom_path = session.get('dicom_path')
+        
+        # Extract DICOM metadata
+        dicom_metadata = {}
+        if dicom_path:
+            dicom_metadata = self._extract_dicom_metadata(dicom_path)
+        
         # 1. Metadata
         metadata: Metadata = {
             'event_id': str(uuid.uuid4()),
