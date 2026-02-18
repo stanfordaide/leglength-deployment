@@ -11,7 +11,7 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
-    editable: false
+    editable: true
     jsonData:
       httpMethod: POST
       manageAlerts: true
@@ -23,6 +23,6 @@ datasources:
     type: graphite
     access: proxy
     url: http://graphite:80
-    editable: false
+    editable: true
     jsonData:
       graphiteVersion: "1.1"

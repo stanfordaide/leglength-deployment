@@ -52,10 +52,11 @@ services:
     networks:
       - monitoring-net
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2003"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 40s
 
   # =============================================================================
   # VISUALIZATION
@@ -82,8 +83,10 @@ services:
     networks:
       - monitoring-net
     depends_on:
-      - prometheus
-      - graphite
+      prometheus:
+        condition: service_healthy
+      graphite:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
