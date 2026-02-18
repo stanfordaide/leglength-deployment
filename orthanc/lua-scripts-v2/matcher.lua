@@ -69,7 +69,7 @@ local function hasAIResultMarker(instances)
         -- CHECK 1: Manufacturer is STANFORDAIDE (primary AI marker)
         local manufacturer = Utils.safeGet(instance, "Manufacturer", "")
         if Utils.containsIgnoreCase(manufacturer, "STANFORDAIDE") then
-            Log.debug("AI result marker found", { check = "Manufacturer", value = manufacturer })
+            Log.info("AI result marker found", { check = "Manufacturer", value = manufacturer })
             return true
         end
         
@@ -77,7 +77,7 @@ local function hasAIResultMarker(instances)
         -- REMOVED: Too broad - catches radiation dose reports etc.
         -- local modality = Utils.safeGet(instance, "Modality", "")
         -- if Utils.upper(modality) == "SR" then
-        --     Log.debug("AI result marker found", { check = "Modality", value = modality })
+        --     Log.info("AI result marker found", { check = "Modality", value = modality })
         --     return true
         -- end
         
@@ -85,14 +85,14 @@ local function hasAIResultMarker(instances)
         local seriesDesc = Utils.safeGet(instance, "SeriesDescription", "")
         if Utils.containsIgnoreCase(seriesDesc, "AI MEASUREMENTS") or 
            Utils.containsIgnoreCase(seriesDesc, "QA VISUALIZATION") then
-            Log.debug("AI result marker found", { check = "SeriesDescription", value = seriesDesc })
+            Log.info("AI result marker found", { check = "SeriesDescription", value = seriesDesc })
             return true
         end
         
         -- CHECK 4: Software version pattern
         local softwareVersions = Utils.safeGet(instance, "SoftwareVersions", "")
         if Utils.containsIgnoreCase(softwareVersions, "PEDIATRIC_LEG_LENGTH_V") then
-            Log.debug("AI result marker found", { check = "SoftwareVersions", value = softwareVersions })
+            Log.info("AI result marker found", { check = "SoftwareVersions", value = softwareVersions })
             return true
         end
         
@@ -104,7 +104,7 @@ local function hasAIResultMarker(instances)
            Utils.upper(department) == "RADIOLOGY" and
            Utils.upper(stationName) == "LPCH" and
            Utils.containsIgnoreCase(manufacturer, "STANFORDAIDE") then
-            Log.debug("AI result marker found", { check = "InstitutionCombo" })
+            Log.info("AI result marker found", { check = "InstitutionCombo" })
             return true
         end
     end

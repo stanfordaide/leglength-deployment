@@ -470,14 +470,25 @@ def update_workflow_status(cur, study_id, destination, success, error):
         print(f"[JobPoller] Unknown destination: {destination}")
         return
     
-    cur.execute(f"""
-        UPDATE study_workflows 
-        SET {prefix}_sent_at = COALESCE({prefix}_sent_at, NOW()),
-            {prefix}_send_success = %s, 
-            {prefix}_send_error = %s, 
-            updated_at = NOW()
-        WHERE study_id = %s
-    """, (success, error, study_id))
+    if destination.upper() == 'MERCURE':
+        app.logger.info(f"[update_workflow_status] Updating MERCURE status for {study_id} (success={success})")
+        cur.execute("""
+            UPDATE study_workflows 
+            SET mercure_sent_at = COALESCE(mercure_sent_at, NOW()),
+                mercure_send_success = %s, 
+                mercure_send_error = %s, 
+                updated_at = NOW()
+            WHERE study_id = %s
+        """, (success, error, study_id))
+    else:
+        cur.execute(f"""
+            UPDATE study_workflows 
+            SET {prefix}_sent_at = COALESCE({prefix}_sent_at, NOW()),
+                {prefix}_send_success = %s, 
+                {prefix}_send_error = %s, 
+                updated_at = NOW()
+            WHERE study_id = %s
+        """, (success, error, study_id))
 
 
 @app.route('/health', methods=['GET'])
@@ -554,6 +565,8 @@ def track_ai_results():
     """Record AI results received back - also implies MERCURE was successful"""
     data = request.json or {}
     study_id = data.get('study_id')
+    
+    app.logger.info(f"[track/ai-results] CALLED for study {study_id}")
     
     conn = get_db()
     cur = conn.cursor()
