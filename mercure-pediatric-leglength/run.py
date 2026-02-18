@@ -30,8 +30,12 @@ def parse_args():
     
     return parser.parse_args()
 
-def load_config(input_dir: Path, log: logging.Logger) -> dict:
-    """Load configuration from task.json in input directory, or use defaults."""
+def load_config(input_dir: Path, log: logging.Logger) -> tuple[dict, dict]:
+    """Load configuration from task.json in input directory, or use defaults.
+    
+    Returns:
+        tuple: (config dict, task_info dict with study_uid, etc.)
+    """
     # Default configuration
     defaults = {
         'models': ['resnet101', 'efficientnet_v2_m', 'mobilenet_v3_large'],
@@ -43,11 +47,20 @@ def load_config(input_dir: Path, log: logging.Logger) -> dict:
     }
     
     task_file = input_dir / "task.json"
+    task_info = {}
     
     try:
         if task_file.exists():
             with open(task_file, "r") as f:
                 task = json.load(f)
+            
+            # Extract study information
+            if "study" in task and task["study"]:
+                task_info["study_uid"] = task["study"].get("study_uid")
+            if "info" in task and task["info"]:
+                task_info["accession_number"] = task["info"].get("acc")
+                task_info["patient_name"] = task["info"].get("patient_name")
+                task_info["mrn"] = task["info"].get("mrn")
             
             # Extract settings from task file (if present)
             # log.info(f"Task file content: {json.dumps(task, indent=2)}")
@@ -75,12 +88,12 @@ def load_config(input_dir: Path, log: logging.Logger) -> dict:
                 config[key] = value
                 log.info(f"Using default value for {key}: {value}")
         
-        return config
+        return config, task_info
         
     except Exception as e:
         log.error(f"Error loading configuration: {e}")
         log.info("Using default configuration")
-        return defaults
+        return defaults, task_info
 
 def validate_config(config: dict, log: logging.Logger) -> list:
     """Validate configuration values and provide helpful error messages."""
@@ -257,6 +270,101 @@ def persist_results(output_dir: Path, series_id: str, accession_number: str, log
         
     except Exception as e:
         logger.error(f"Failed to persist results: {e}")
+
+
+def store_results_to_db(
+    results: dict,
+    study_uid: str,
+    series_id: str,
+    accession_number: str,
+    config: dict,
+    output_dir: Path,
+    dicom_path: Path,
+    processing_time: float,
+    logger: logging.Logger
+):
+    """
+    Store results.json in PostgreSQL database if results_db is configured.
+    """
+    results_db_config = config.get("results_db", {})
+    if not results_db_config.get("enabled", False):
+        logger.debug("results_db not enabled, skipping database storage")
+        return
+    
+    if not study_uid:
+        logger.warning("No study_uid available, cannot store results in database")
+        return
+    
+    try:
+        # Import results_db_client from monitoring submodule
+        try:
+            from monitoring import ResultsDBClient
+        except ImportError:
+            logger.warning("ResultsDBClient not available from monitoring module, skipping database storage")
+            return
+        
+        # Initialize client with config
+        os.environ["MONITORING_DB_HOST"] = results_db_config.get("host", "172.17.0.1")
+        os.environ["MONITORING_DB_PORT"] = str(results_db_config.get("port", 9042))
+        os.environ["MONITORING_DB_NAME"] = results_db_config.get("database", "monitoring")
+        os.environ["MONITORING_DB_USER"] = results_db_config.get("user", "monitoring")
+        os.environ["MONITORING_DB_PASS"] = results_db_config.get("password", "monitoring123")
+        
+        client = ResultsDBClient(enabled=True)
+        
+        if not client.enabled:
+            logger.warning("Results DB client not enabled, skipping database storage")
+            return
+        
+        # Load the saved JSON file to get complete results
+        json_file = output_dir / 'result.json'
+        if json_file.exists():
+            with open(json_file, 'r') as f:
+                results_json = json.load(f)
+        else:
+            # Fallback to the results dict passed in
+            results_json = results
+        
+        # Extract metadata from DICOM if available
+        try:
+            dicom_headers = pydicom.dcmread(dicom_path, stop_before_pixels=True)
+            patient_id = getattr(dicom_headers, "PatientID", None)
+            patient_name = getattr(dicom_headers, "PatientName", None)
+            study_date = getattr(dicom_headers, "StudyDate", None)
+            study_description = getattr(dicom_headers, "StudyDescription", None)
+        except Exception as e:
+            logger.debug(f"Could not read DICOM metadata: {e}")
+            patient_id = None
+            patient_name = None
+            study_date = None
+            study_description = None
+        
+        # Store in database
+        success = client.store_result(
+            study_uid=study_uid,
+            results_json=results_json,
+            series_id=series_id,
+            accession_number=accession_number,
+            patient_id=patient_id,
+            patient_name=str(patient_name) if patient_name else None,
+            study_date=study_date,
+            study_description=study_description,
+            processing_time_seconds=processing_time,
+            models_used=config.get("models", []),
+            input_file_path=str(dicom_path),
+            output_directory=str(output_dir)
+        )
+        
+        if success:
+            logger.info(f"Successfully stored results in database for study_uid={study_uid}")
+        else:
+            logger.warning(f"Failed to store results in database for study_uid={study_uid}")
+        
+        client.close()
+        
+    except Exception as e:
+        logger.error(f"Error storing results in database: {e}")
+        logger.debug("Full error:", exc_info=True)
 
 
 
@@ -480,7 +588,7 @@ def main():
         print("IN/OUT paths do not exist")
         sys.exit(1)
     
-    config = load_config(args.input_dir, logger)
+    config, task_info = load_config(args.input_dir, logger)
     
     # Initialize monitoring (DISABLED)
     # Monitoring has been disabled - metrics will be emitted directly to Graphite instead
@@ -608,6 +716,19 @@ def main():
                 
                 # Persist results to monitoring storage
                 persist_results(args.output_dir, series_id, accession_number, logger)
+                
+                # Store results in database if configured
+                store_results_to_db(
+                    results=results,
+                    study_uid=task_info.get("study_uid"),
+                    series_id=series_id,
+                    accession_number=accession_number or task_info.get("accession_number"),
+                    config=config,
+                    output_dir=args.output_dir,
+                    dicom_path=dicom_path,
+                    processing_time=processing_time,
+                    logger=logger
+                )
                 
                 # Record metrics
                 if monitor:

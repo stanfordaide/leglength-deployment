@@ -3,6 +3,7 @@
 # PORT SCHEME (9030 series):
 #   - 9032: Grafana
 #   - 9033: Prometheus
+#   - 9034: PostgreSQL (AI results storage)
 #   - 9038: Graphite (Carbon line receiver)
 #   - 9039: Graphite Pickle receiver
 #   - 9041: Graphite Web UI
@@ -62,6 +63,31 @@ services:
   # VISUALIZATION
   # =============================================================================
 
+  # PostgreSQL for AI results storage (JSONB)
+  postgres:
+    image: postgres:15-alpine
+    container_name: monitoring-postgres
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - POSTGRES_DB=${MONITORING_DB_NAME:-monitoring}
+      - POSTGRES_USER=${MONITORING_DB_USER:-monitoring}
+      - POSTGRES_PASSWORD=${MONITORING_DB_PASS:-monitoring123}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "${MONITORING_DB_PORT:-9034}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - monitoring-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MONITORING_DB_USER:-monitoring}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -87,6 +113,8 @@ services:
         condition: service_healthy
       graphite:
         condition: service_started
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
@@ -101,3 +129,4 @@ volumes:
   prometheus_data:
   graphite_data:
   grafana_data:
+  postgres_data:

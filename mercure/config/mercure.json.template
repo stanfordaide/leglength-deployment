@@ -115,6 +115,14 @@
                             "enabled": true
                         }
                     }
+                },
+                "results_db": {
+                    "enabled": true,
+                    "host": "${MONITORING_DB_HOST:-172.17.0.1}",
+                    "port": ${MONITORING_DB_PORT:-9042},
+                    "database": "${MONITORING_DB_NAME:-monitoring}",
+                    "user": "${MONITORING_DB_USER:-monitoring}",
+                    "password": "${MONITORING_DB_PASS:-monitoring123}"
                 }
             },
             "contact": "arogya@stanford.edu",

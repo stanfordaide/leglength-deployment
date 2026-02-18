@@ -107,8 +107,9 @@ clear:
 	@echo "✅ Services are stopped"
 	@echo ""
 	@echo "⚠️  This will permanently delete:"
-	@echo "   - All Docker volumes (prometheus_data, graphite_data, grafana_data)"
+	@echo "   - All Docker volumes (prometheus_data, graphite_data, grafana_data, postgres_data)"
 	@echo "   - All data directories"
+	@echo "   - All stored AI results (results.json)"
 	@echo ""
 	@read -p "Continue? Type 'yes' to confirm: " confirm && [ "$$confirm" = "yes" ] || exit 1
 	@echo ""

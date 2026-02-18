@@ -28,6 +28,14 @@
                     "include_system_metrics": true,
                     "include_model_metrics": true
                 }
+            },
+            "results_db": {
+                "enabled": true,
+                "host": "172.17.0.1",
+                "port": 9042,
+                "database": "monitoring",
+                "user": "monitoring",
+                "password": "monitoring123"
             }
         }
     }
