@@ -818,7 +818,13 @@ def get_workflows():
             status_text = "Received in Orthanc"
         elif not w['ai_results_received']:
             if w['mercure_send_success'] is True:
-                status_text = "Processing in Mercure"
+                # Check deeper Mercure status if available
+                if w.get('mercure_processing_started_at'):
+                     status_text = "Processing in Mercure (AI Running)"
+                elif w.get('mercure_received_at'):
+                     status_text = "Queued in Mercure"
+                else:
+                    status_text = "Sent to Mercure"
             elif w['mercure_send_success'] is False:
                 status_text = "Failed to send to Mercure"
             else:
@@ -902,7 +908,13 @@ def get_workflow(study_id):
         'patient_name': w['patient_name'],
         'study_description': w['study_description'],
         'stages': {
-            'mercure': {'status': 'success' if w['mercure_send_success'] else ('failed' if w['mercure_send_success'] is False else 'pending'), 'error': w['mercure_send_error']},
+            'mercure': {
+                'status': 'success' if w['mercure_send_success'] else ('failed' if w['mercure_send_success'] is False else 'pending'), 
+                'error': w['mercure_send_error'],
+                'received_at': w['mercure_received_at'].isoformat() if w.get('mercure_received_at') else None,
+                'processing_started_at': w['mercure_processing_started_at'].isoformat() if w.get('mercure_processing_started_at') else None,
+                'processing_completed_at': w['mercure_processing_completed_at'].isoformat() if w.get('mercure_processing_completed_at') else None
+            },
             'ai_results': {'status': 'received' if w['ai_results_received'] else 'waiting'},
             'lpch': {'status': 'success' if w['lpch_send_success'] else ('failed' if w['lpch_send_success'] is False else 'pending'), 'error': w['lpch_send_error']},
             'lpcht': {'status': 'success' if w['lpcht_send_success'] else ('failed' if w['lpcht_send_success'] is False else 'pending'), 'error': w['lpcht_send_error']},
