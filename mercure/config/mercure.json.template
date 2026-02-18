@@ -25,8 +25,8 @@
     "dicom_receiver": {
         "additional_tags": {}
     },
-    "graphite_ip": "graphite",
-    "graphite_port": 2003,
+    "graphite_ip": "${DOCKER_HOST_GATEWAY}",
+    "graphite_port": ${GRAPHITE_PORT},
     "influxdb_host": "",
     "influxdb_token": "",
     "influxdb_org": "",
@@ -85,8 +85,8 @@
     "modules": {
         "PediatricLegLength": {
             "docker_tag": "stanfordaide/pediatric-leglength:latest",
-            "additional_volumes": "${MONITORING_DATA_PATH}:${MONITORING_DATA_PATH}",
-            "environment": "MONITORING_DATA_PATH=${MONITORING_DATA_PATH}",
+            "additional_volumes": "{\"${MONITORING_DATA_PATH}\": {\"bind\": \"${MONITORING_DATA_PATH}\", \"mode\": \"rw\"}}",
+            "environment": "{\"MONITORING_DATA_PATH\": \"${MONITORING_DATA_PATH}\"}",
             "docker_arguments": "",
             "settings": {
                 "models": [

@@ -285,8 +285,8 @@ if [ ! -f "$MERCURE_JSON_TEMPLATE" ]; then
     "modules": {
         "PediatricLegLength": {
             "docker_tag": "stanfordaide/pediatric-leglength:latest",
-            "additional_volumes": "${MONITORING_DATA_PATH}:${MONITORING_DATA_PATH}",
-            "environment": "MONITORING_DATA_PATH=${MONITORING_DATA_PATH}",
+            "additional_volumes": "{\"${MONITORING_DATA_PATH}\": {\"bind\": \"${MONITORING_DATA_PATH}\", \"mode\": \"rw\"}}",
+            "environment": "{\"MONITORING_DATA_PATH\": \"${MONITORING_DATA_PATH}\"}",
             "docker_arguments": "",
             "settings": {
                 "models": [
@@ -352,13 +352,15 @@ fi
 
 # Use envsubst to replace variables in template
 export MONITORING_DATA_PATH
+export DOCKER_HOST_GATEWAY="${DOCKER_HOST_GATEWAY:-172.17.0.1}"
 export MONITORING_DB_HOST="${DOCKER_HOST_GATEWAY:-172.17.0.1}"
 export MONITORING_DB_PORT="${MONITORING_DB_PORT:-9042}"
 export MONITORING_DB_NAME="${MONITORING_DB_NAME:-monitoring}"
 export MONITORING_DB_USER="${MONITORING_DB_USER:-monitoring}"
 export MONITORING_DB_PASS="${MONITORING_DB_PASS:-monitoring123}"
+export GRAPHITE_PORT="${GRAPHITE_PORT:-9038}"
 
-envsubst '${MONITORING_DATA_PATH} ${MONITORING_DB_HOST} ${MONITORING_DB_PORT} ${MONITORING_DB_NAME} ${MONITORING_DB_USER} ${MONITORING_DB_PASS}' \
+envsubst '${MONITORING_DATA_PATH} ${DOCKER_HOST_GATEWAY} ${MONITORING_DB_HOST} ${MONITORING_DB_PORT} ${MONITORING_DB_NAME} ${MONITORING_DB_USER} ${MONITORING_DB_PASS} ${GRAPHITE_PORT}' \
     < "$MERCURE_JSON_TEMPLATE" \
     > "$MERCURE_JSON_OUTPUT"
 

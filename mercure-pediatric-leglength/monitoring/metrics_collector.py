@@ -397,7 +397,7 @@ class MetricsCollector:
         }
         
         # 4. Raw Predictions
-                        performance_data = session.get('performance_data', {})
+        performance_data = session.get('performance_data', {})
         individual_preds = performance_data.get('individual_model_predictions', {})
         raw_predictions: Dict[str, ModelPrediction] = {}
         
