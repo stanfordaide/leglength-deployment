@@ -325,9 +325,9 @@ def enrich_workflows_from_mercure():
             workflow_cur = workflow_conn.cursor(cursor_factory=RealDictCursor)
             
             # Find studies that were sent to Mercure but don't have full processing info
-            # Must have a valid study_instance_uid to query Bookkeeper
+            # We also need mercure_sent_at to filter out old events from previous runs
             workflow_cur.execute("""
-                SELECT study_id, study_instance_uid 
+                SELECT study_id, study_instance_uid, mercure_sent_at
                 FROM study_workflows 
                 WHERE mercure_sent_at IS NOT NULL 
                 AND study_instance_uid IS NOT NULL 
@@ -349,6 +349,7 @@ def enrich_workflows_from_mercure():
             for study in pending_studies:
                 study_uid = study['study_instance_uid']
                 study_id = study['study_id']
+                sent_at = study['mercure_sent_at']
                 
                 if not study_uid:
                     continue
@@ -361,30 +362,37 @@ def enrich_workflows_from_mercure():
                     try:
                         bookkeeper_cur = bookkeeper_conn.cursor(cursor_factory=RealDictCursor)
                         
-                        # NOTE: Mercure doesn't populate study_uid in tasks table
-                        # It only has series_uid in the JSON data field
-                        # We use dicom_series table instead for received_at timestamp
-                        
-                        events = []
-                        mercure_received_at = None
-                        processing_started = None
-                        processing_completed = None
-                        
-                        # Query dicom_series for this study to get when it was received
+                        # 1. Get received time (from dicom_series)
+                        # We want the one closest to our sent_at time (to handle re-sends)
                         bookkeeper_cur.execute("""
-                            SELECT MIN(time) as received_at
+                            SELECT time as received_at
                             FROM dicom_series
                             WHERE study_uid = %s
-                        """, (study_uid,))
+                            AND time >= %s - INTERVAL '5 minutes' -- Allow small clock skew
+                            ORDER BY time ASC
+                            LIMIT 1
+                        """, (study_uid, sent_at))
                         
                         series_info = bookkeeper_cur.fetchone()
                         if series_info and series_info['received_at']:
                             mercure_received_at = series_info['received_at']
                         
+                        # 2. Get processing events (joined from tasks)
+                        # Only look for events that happened AFTER we sent the study
+                        bookkeeper_cur.execute("""
+                            SELECT te.event, te.time
+                            FROM task_events te
+                            JOIN tasks t ON te.task_id = t.id
+                            WHERE (t.study_uid = %s OR t.series_uid IN (
+                                SELECT series_uid FROM dicom_series WHERE study_uid = %s
+                            ))
+                            AND te.time >= %s
+                            ORDER BY te.time ASC
+                        """, (study_uid, study_uid, sent_at))
+                        
+                        events = bookkeeper_cur.fetchall()
                         bookkeeper_cur.close()
                         
-                        # For processing timestamps, we can't correlate without study_uid in tasks
-                        # Skip processing timestamp extraction for now
                     except Exception as bk_err:
                         # Rollback bookkeeper transaction if it failed
                         bookkeeper_conn.rollback()
@@ -402,12 +410,12 @@ def enrich_workflows_from_mercure():
                         # Mercure events:
                         # PROCESS_BEGIN: When actual processing starts (AI module)
                         # PROCESS_COMPLETE: When processing finishes
-                        # COMPLETE: Final task completion
+                        # DISPATCH_COMPLETE: When results are sent back
                         
-                        if event_type == 'PROCESS_BEGIN' and processing_started is None:
+                        if 'PROCESS_BEGIN' in event_type and processing_started is None:
                             processing_started = event_time
                         
-                        if event_type == 'PROCESS_COMPLETE' and processing_completed is None:
+                        if ('PROCESS_COMPLETE' in event_type or 'DISPATCH_COMPLETE' in event_type) and processing_completed is None:
                             processing_completed = event_time
                     
                     # Create a new connection and transaction for each update
@@ -416,6 +424,7 @@ def enrich_workflows_from_mercure():
                     
                     try:
                         # Update workflow with Mercure processing info
+                        # Note: We do NOT update ai_results_received here to avoid race conditions with Lua
                         update_cur.execute("""
                             UPDATE study_workflows 
                             SET 
@@ -428,9 +437,10 @@ def enrich_workflows_from_mercure():
                         
                         update_conn.commit()
                         
-                        print(f"[MercureEnricher] ✓ {study_uid[:12]}... - "
-                              f"received: {mercure_received_at}, "
-                              f"processing: {processing_started}")
+                        if mercure_received_at or processing_started:
+                            print(f"[MercureEnricher] ✓ {study_uid[:12]}... - "
+                                  f"received: {mercure_received_at}, "
+                                  f"processing: {processing_started}")
                     except Exception as update_err:
                         update_conn.rollback()
                         print(f"[MercureEnricher] Failed to update {study_uid}: {update_err}")
@@ -803,11 +813,44 @@ def get_workflows():
             pass
         
         # Determine current stage and status
+        status_text = "Unknown"
+        if not w['mercure_sent_at']:
+            status_text = "Received in Orthanc"
+        elif not w['ai_results_received']:
+            if w['mercure_send_success'] is True:
+                status_text = "Processing in Mercure"
+            elif w['mercure_send_success'] is False:
+                status_text = "Failed to send to Mercure"
+            else:
+                status_text = "Sending to Mercure..."
+        else:
+            # AI results received
+            failed_dests = []
+            pending_dests = []
+            
+            # Check failures
+            if w['lpch_send_success'] is False: failed_dests.append('LPCH')
+            if w['lpcht_send_success'] is False: failed_dests.append('LPCHT')
+            if w['modlink_send_success'] is False: failed_dests.append('MODLINK')
+            
+            # Check pending (only if not failed)
+            if w['lpch_send_success'] is None: pending_dests.append('LPCH')
+            if w['lpcht_send_success'] is None: pending_dests.append('LPCHT')
+            if w['modlink_send_success'] is None: pending_dests.append('MODLINK')
+
+            if failed_dests:
+                status_text = f"Routing failed: {', '.join(failed_dests)}"
+            elif pending_dests:
+                status_text = f"Routing to: {', '.join(pending_dests)}"
+            else:
+                status_text = "Complete"
+
         pipeline = {
             'study_id': w['study_id'],
             'patient_name': w['patient_name'],
             'study_description': w['study_description'],
             'created_at': w['created_at'].isoformat() if w['created_at'] else None,
+            'status_text': status_text,
             'stages': {
                 'mercure': {
                     'status': 'success' if w['mercure_send_success'] else ('failed' if w['mercure_send_success'] is False else 'pending'),
@@ -1005,7 +1048,7 @@ def get_funnel():
         
         # Complete pipeline with all stages
         'pipeline': [
-            # INPUT STAGE
+            # 1. Studies in Orthanc
             {
                 'stage': 'INPUT',
                 'name': 'Studies in Orthanc',
@@ -1013,34 +1056,28 @@ def get_funnel():
                 'percent': 100,
                 'status': 'neutral'
             },
+            # 2. Sent to Mercure
             {
-                'stage': 'INPUT',
+                'stage': 'PROCESSING',
                 'name': 'Sent to Mercure',
                 'count': stats['sent_to_mercure'] or 0,
                 'percent': pct(stats['sent_to_mercure'] or 0, total or 1),
                 'status': 'success' if (stats['sent_to_mercure'] or 0) > 0 else 'neutral'
             },
             
-            # PROCESSING STAGE (Mercure) - Only received_at is trackable
-            {
-                'stage': 'PROCESSING',
-                'name': 'Received at Mercure',
-                'count': stats['mercure_received'] or 0,
-                'percent': pct(stats['mercure_received'] or 0, total or 1),
-                'status': 'success' if (stats['mercure_received'] or 0) > 0 else 'waiting'
-            },
-            
-            # OUTPUT STAGE
+            # 3. Received back from Mercure (AI Results)
             {
                 'stage': 'OUTPUT',
-                'name': 'AI Results Back to Orthanc',
+                'name': 'Received back from Mercure',
                 'count': ai_received,
                 'percent': pct(ai_received, total or 1),
                 'status': 'success' if ai_received > 0 else 'waiting'
             },
+            
+            # 4. Sent to Destination
             {
                 'stage': 'OUTPUT',
-                'name': 'Routed to Destinations',
+                'name': 'Sent to Destination',
                 'count': destinations_all_success,
                 'percent': pct(destinations_all_success, total or 1),
                 'failed': destinations_any_failed,
