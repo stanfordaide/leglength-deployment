@@ -92,15 +92,16 @@ local function sendInstance(studyId, instanceId, destination)
     else
         -- Send succeeded - result is the Orthanc job ID
         local jobId = tostring(result)
-        Log.info("Send succeeded", {
+        Log.info("Send queued", {
             studyId = studyId,
             destination = destination,
             jobId = jobId,
         })
         
-        -- Record send success in tracking database
+        -- Record send ATTEMPT (status=nil means pending)
+        -- We don't mark as success yet - we wait for the job poller to confirm completion
         if Tracker.sendAttempted then
-            Tracker.sendAttempted(studyId, destination, true, nil)
+            Tracker.sendAttempted(studyId, destination, nil, nil)
         end
         
         -- Register the job ID for async polling of actual delivery status

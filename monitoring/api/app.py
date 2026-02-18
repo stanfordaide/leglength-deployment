@@ -542,7 +542,7 @@ def track_mercure_sent():
     """Record MERCURE send attempt"""
     data = request.json or {}
     study_id = data.get('study_id')
-    success = data.get('success', False)
+    success = data.get('success')  # Default to None (Pending) if missing
     error = data.get('error')
     
     conn = get_db()
@@ -595,7 +595,7 @@ def track_destination():
     data = request.json or {}
     study_id = data.get('study_id')
     destination = data.get('destination', '').upper()
-    success = data.get('success', False)
+    success = data.get('success')  # Default to None (Pending) if missing
     error = data.get('error')
     
     conn = get_db()
