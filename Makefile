@@ -495,11 +495,11 @@ setup-config:
 		else \
 			printf "  $(YELLOW)⚠️$(RESET) graphite_ip may not be 'graphite'\n"; \
 		fi; \
-		if ! grep -q '\${' mercure/config-generated/mercure.json 2>/dev/null; then \
+		if ! grep -q '$${' mercure/config-generated/mercure.json 2>/dev/null; then \
 			printf "  $(GREEN)✅$(RESET) No unsubstituted variables in mercure.json\n"; \
 		else \
 			printf "  $(RED)✗$(RESET) Unsubstituted variables found!\n"; \
-			grep -n '\${' mercure/config-generated/mercure.json | head -3; \
+			grep -n '$${' mercure/config-generated/mercure.json | head -3; \
 		fi; \
 		printf "$(CYAN)Copying mercure.json to /opt/mercure/config/...$(RESET)\n"; \
 		sudo cp mercure/config-generated/mercure.json /opt/mercure/config/mercure.json && \
@@ -511,11 +511,11 @@ setup-config:
 	@# Verify Grafana datasources
 	@if [ -f monitoring-v2/config/grafana/provisioning/datasources/datasources.yml ]; then \
 		printf "$(CYAN)Verifying Grafana datasources...$(RESET)\n"; \
-		if ! grep -q '\${' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml 2>/dev/null; then \
+		if ! grep -q '$${' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml 2>/dev/null; then \
 			printf "  $(GREEN)✅$(RESET) No unsubstituted variables in datasources.yml\n"; \
 		else \
 			printf "  $(RED)✗$(RESET) Unsubstituted variables found!\n"; \
-			grep -n '\${' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml | head -3; \
+			grep -n '$${' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml | head -3; \
 		fi; \
 		if grep -q 'mercure_db_1' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml 2>/dev/null; then \
 			printf "  $(GREEN)✅$(RESET) BOOKKEEPER_DB_HOST=mercure_db_1 (service name)\n"; \
