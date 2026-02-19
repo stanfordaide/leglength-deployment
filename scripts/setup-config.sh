@@ -660,7 +660,25 @@ if [ -f "$GRAFANA_DATASOURCES_TEMPLATE" ]; then
     export BOOKKEEPER_DB_PORT="5432"  # Internal port, not host port
     export BOOKKEEPER_DB_NAME="${BOOKKEEPER_DB_NAME:-${MERCURE_DB_NAME:-mercure}}"
     export BOOKKEEPER_DB_USER="${BOOKKEEPER_DB_USER:-${MERCURE_DB_USER:-mercure}}"
-    export BOOKKEEPER_DB_PASS="${BOOKKEEPER_DB_PASS:-${MERCURE_DB_PASS}}"
+    
+    # Try to read actual Mercure database password from installed location
+    # This ensures we use the correct password even if Mercure was installed with a different one
+    MERCURE_INSTALLED_DB_ENV="/opt/mercure/config/db.env"
+    if [ -f "$MERCURE_INSTALLED_DB_ENV" ]; then
+        # Read POSTGRES_PASSWORD from Mercure's db.env file
+        ACTUAL_MERCURE_DB_PASS=$(grep "^POSTGRES_PASSWORD=" "$MERCURE_INSTALLED_DB_ENV" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")
+        if [ -n "$ACTUAL_MERCURE_DB_PASS" ]; then
+            export BOOKKEEPER_DB_PASS="$ACTUAL_MERCURE_DB_PASS"
+            echo -e "  ${CYAN}Using Mercure database password from $MERCURE_INSTALLED_DB_ENV${NC}"
+        else
+            export BOOKKEEPER_DB_PASS="${BOOKKEEPER_DB_PASS:-${MERCURE_DB_PASS}}"
+            echo -e "  ${YELLOW}⚠${NC} Could not read password from $MERCURE_INSTALLED_DB_ENV, using config.env value"
+        fi
+    else
+        # Mercure not installed yet, use password from config.env
+        export BOOKKEEPER_DB_PASS="${BOOKKEEPER_DB_PASS:-${MERCURE_DB_PASS}}"
+    fi
+    
     export BOOKKEEPER_DB_HOST="mercure_db_1"  # Service name on shared network
     
     # Remove if it exists as a directory (from previous errors)
