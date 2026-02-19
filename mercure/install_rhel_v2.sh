@@ -195,6 +195,12 @@ setup_docker () {
     else
       sudo sed -i "s/\\\${IMAGE_TAG}/$IMAGE_TAG/g" $MERCURE_BASE/docker-compose.yml
     fi
+    
+    # Substitute MERCURE_DB_PATH if set (from config.env)
+    if [[ -v MERCURE_DB_PATH ]]; then
+      sudo sed -i "s|\\\${MERCURE_DB_PATH:-/opt/mercure/db}|$MERCURE_DB_PATH|g" $MERCURE_BASE/docker-compose.yml
+    fi
+    
     sudo chown $OWNER:$OWNER "$MERCURE_BASE"/docker-compose.yml
   fi
   

@@ -1,12 +1,15 @@
 # Monitoring - Metrics Collection Stack
 #
 # PORT SCHEME (9030 series):
-#   - 9032: Grafana
+#   - 9030: Grafana
+#   - 9031: Workflow API (internal only)
 #   - 9033: Prometheus
-#   - 9034: PostgreSQL (AI results storage)
 #   - 9038: Graphite (Carbon line receiver)
 #   - 9039: Graphite Pickle receiver
 #   - 9041: Graphite Web UI
+#
+# NOTE: Database ports are NOT exposed to host - internal access only via service name
+# All services join the shared 'leglength-network' for inter-container communication
 
 services:
   # =============================================================================
@@ -30,7 +33,7 @@ services:
       - prometheus_data:/prometheus
       - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
-      - monitoring-net
+      - leglength-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 30s
@@ -51,7 +54,7 @@ services:
     volumes:
       - graphite_data:/opt/graphite/storage
     networks:
-      - monitoring-net
+      - leglength-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
       interval: 30s
@@ -75,13 +78,12 @@ services:
       - POSTGRES_USER=${MONITORING_DB_USER:-monitoring}
       - POSTGRES_PASSWORD=${MONITORING_DB_PASS:-monitoring123}
       - PGDATA=/var/lib/postgresql/data/pgdata
-    ports:
-      - "${MONITORING_DB_PORT:-9034}:5432"
+    # Database port not exposed to host - internal access only via service name
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
-      - monitoring-net
+      - leglength-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${MONITORING_DB_USER:-monitoring}"]
       interval: 10s
@@ -95,12 +97,12 @@ services:
     env_file:
       - ./.env
     ports:
-      - "${GRAFANA_PORT:-9032}:3000"
+      - "${GRAFANA_PORT:-9030}:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS:-admin123}
       - GF_INSTALL_PLUGINS=
-      - GF_SERVER_ROOT_URL=http://localhost:9032
+      - GF_SERVER_ROOT_URL=http://localhost:9030
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=master-dashboard
     volumes:
@@ -108,7 +110,7 @@ services:
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
-      - monitoring-net
+      - leglength-network
     depends_on:
       prometheus:
         condition: service_healthy
@@ -123,11 +125,18 @@ services:
       retries: 3
 
 networks:
-  monitoring-net:
-    driver: bridge
+  leglength-network:
+    external: true
+    name: leglength-network
+  # All services join the shared leglength-network for inter-container communication
 
 volumes:
   prometheus_data:
   graphite_data:
   grafana_data:
   postgres_data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '${MONITORING_DB_STORAGE:-/opt/monitoring/postgres-data}'

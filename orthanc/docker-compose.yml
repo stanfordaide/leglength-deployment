@@ -31,7 +31,7 @@ services:
     secrets:
       - orthanc.json
     ports:
-      - "${ORTHANC_WEB_PORT:-9011}:8042"
+      - "${ORTHANC_WEB_PORT:-9010}:8042"
       - "${DICOM_PORT:-4242}:4242"
     volumes:
       # Mount Lua scripts (v2 - modular)
@@ -42,13 +42,16 @@ services:
     environment:
       - ORTHANC_NAME=${ORTHANC_AET:-ORTHANC_LPCH}
       - TZ=${TZ:-America/Los_Angeles}
-      # Lua scripts use this to call the workflow-api
-      - WORKFLOW_API_URL=${WORKFLOW_API_URL:-http://172.17.0.1:9031}
+      # Lua scripts use this to call the workflow-api (via service name on shared network)
+      - WORKFLOW_API_URL=${WORKFLOW_API_URL:-http://workflow-api:9031}
     depends_on:
       orthanc-db:
         condition: service_healthy
     # NOTE: Orthanc Lua scripts call the monitoring stack's workflow-api
     # Uses WORKFLOW_API_URL from config.env (set via setup-config.sh)
+    # Now uses service name 'workflow-api' on shared network
+    networks:
+      - leglength-network
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8042/system > /dev/null || exit 1"]
@@ -71,6 +74,8 @@ services:
       - TZ=${TZ:-America/Los_Angeles}
     depends_on:
       - orthanc
+    networks:
+      - leglength-network
     restart: always
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
@@ -84,8 +89,7 @@ services:
   orthanc-db:
     image: postgres:15
     container_name: orthanc-postgres
-    ports:
-      - "${POSTGRES_PORT:-9013}:5432"
+    # Database port not exposed to host - internal access only via service name
     environment:
       - POSTGRES_DB=orthanc
       - POSTGRES_USER=${POSTGRES_USER:-orthanc}
@@ -94,6 +98,8 @@ services:
     volumes:
       - orthanc-db-data:/var/lib/postgresql/data
       - ./init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - leglength-network
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orthanc} -d orthanc"]
@@ -113,10 +119,11 @@ secrets:
 # NETWORKS
 # ═══════════════════════════════════════════════════════════════════════════════
 networks:
-  default:
-    driver: bridge
-  # NOTE: Mercure connection is via host network (MERCURE_DB_HOST in .env)
-  # No external network dependency - Orthanc works standalone
+  leglength-network:
+    external: true
+    name: leglength-network
+  # All services join the shared leglength-network for inter-container communication
+  # Service discovery: containers can reach each other by service name
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # VOLUMES

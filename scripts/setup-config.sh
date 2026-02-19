@@ -56,6 +56,8 @@ check_var "ORTHANC_DB_PASS"
 check_var "MERCURE_DB_PASS"
 check_var "WORKFLOW_DB_PASS"
 check_var "GRAFANA_PASS"
+check_var "MONITORING_DB_PASS"
+check_var "BOOKKEEPER_DB_PASS"
 
 if [ $MISSING -eq 1 ]; then
     echo ""
@@ -143,6 +145,18 @@ envsubst '${ORTHANC_AET} ${ORTHANC_DB_USER} ${ORTHANC_DB_PASS} ${ORTHANC_ADMIN_U
 echo -e "  ${GREEN}✓${NC} orthanc/config/orthanc.json created"
 
 # =============================================================================
+# Create Docker Network (if not exists)
+# =============================================================================
+echo -e "${CYAN}Creating Docker network (if needed)...${NC}"
+
+if ! sudo docker network inspect leglength-network >/dev/null 2>&1; then
+    sudo docker network create leglength-network
+    echo -e "  ${GREEN}✓${NC} Created Docker network: leglength-network"
+else
+    echo -e "  ${GREEN}✓${NC} Docker network 'leglength-network' already exists"
+fi
+
+# =============================================================================
 # Generate Orthanc Lua config.lua (from template)
 # =============================================================================
 echo -e "${CYAN}Generating orthanc/lua-scripts-v2/config.lua...${NC}"
@@ -225,8 +239,8 @@ if [ ! -f "$MERCURE_JSON_TEMPLATE" ]; then
     "dicom_receiver": {
         "additional_tags": {}
     },
-    "graphite_ip": "172.17.0.1",
-    "graphite_port": 9038,
+    "graphite_ip": "graphite",
+    "graphite_port": 2003,
     "influxdb_host": "",
     "influxdb_token": "",
     "influxdb_org": "",
@@ -240,7 +254,7 @@ if [ ! -f "$MERCURE_JSON_TEMPLATE" ]; then
             "contact": "",
             "comment": "",
             "direction": "both",
-            "ip": "172.17.0.1",
+            "ip": "orthanc-server",
             "port": "4242",
             "aet_target": "ORTHANC_LPCH",
             "aet_source": "MERCURE",
@@ -352,19 +366,96 @@ fi
 
 # Use envsubst to replace variables in template
 export MONITORING_DATA_PATH
-export DOCKER_HOST_GATEWAY="${DOCKER_HOST_GATEWAY:-172.17.0.1}"
-export MONITORING_DB_HOST="${DOCKER_HOST_GATEWAY:-172.17.0.1}"
-export MONITORING_DB_PORT="${MONITORING_DB_PORT:-9042}"
-export MONITORING_DB_NAME="${MONITORING_DB_NAME:-monitoring}"
-export MONITORING_DB_USER="${MONITORING_DB_USER:-monitoring}"
-export MONITORING_DB_PASS="${MONITORING_DB_PASS:-monitoring123}"
-export GRAPHITE_PORT="${GRAPHITE_PORT:-9038}"
+# Use service names on shared network instead of host gateway
+export GRAPHITE_IP="graphite"
+export GRAPHITE_PORT="2003"  # Internal port, not host port
 
-envsubst '${MONITORING_DATA_PATH} ${DOCKER_HOST_GATEWAY} ${MONITORING_DB_HOST} ${MONITORING_DB_PORT} ${MONITORING_DB_NAME} ${MONITORING_DB_USER} ${MONITORING_DB_PASS} ${GRAPHITE_PORT}' \
+envsubst '${MONITORING_DATA_PATH} ${GRAPHITE_IP} ${GRAPHITE_PORT}' \
     < "$MERCURE_JSON_TEMPLATE" \
     > "$MERCURE_JSON_OUTPUT"
 
 echo -e "  ${GREEN}✓${NC} mercure/config-generated/mercure.json created"
+
+# =============================================================================
+# Install Mercure (if not already installed)
+# =============================================================================
+echo -e "${CYAN}Checking Mercure installation...${NC}"
+
+MERCURE_INSTALL_DIR="/opt/mercure"
+MERCURE_INSTALL_SCRIPT="$REPO_ROOT/mercure/install_rhel_v2.sh"
+MERCURE_CONFIG_DIR="$MERCURE_INSTALL_DIR/config"
+
+# Check if Mercure is already installed
+if [ -d "$MERCURE_INSTALL_DIR" ] && [ -f "$MERCURE_CONFIG_DIR/mercure.json" ]; then
+    echo -e "  ${GREEN}✓${NC} Mercure is already installed at $MERCURE_INSTALL_DIR"
+    echo -e "  ${CYAN}Updating configuration...${NC}"
+    
+    # Copy generated mercure.json to installed location
+    if [ -f "$MERCURE_JSON_OUTPUT" ]; then
+        sudo cp "$MERCURE_JSON_OUTPUT" "$MERCURE_CONFIG_DIR/mercure.json"
+        sudo chown mercure:mercure "$MERCURE_CONFIG_DIR/mercure.json" 2>/dev/null || \
+            sudo chown root:root "$MERCURE_CONFIG_DIR/mercure.json"
+        sudo chmod 644 "$MERCURE_CONFIG_DIR/mercure.json"
+        echo -e "  ${GREEN}✓${NC} Updated $MERCURE_CONFIG_DIR/mercure.json"
+    fi
+    
+    # Update db.env if it exists
+    if [ -f "$REPO_ROOT/mercure/config-generated/db.env" ]; then
+        sudo cp "$REPO_ROOT/mercure/config-generated/db.env" "$MERCURE_CONFIG_DIR/db.env"
+        sudo chown mercure:mercure "$MERCURE_CONFIG_DIR/db.env" 2>/dev/null || \
+            sudo chown root:root "$MERCURE_CONFIG_DIR/db.env"
+        sudo chmod 600 "$MERCURE_CONFIG_DIR/db.env"
+        echo -e "  ${GREEN}✓${NC} Updated $MERCURE_CONFIG_DIR/db.env"
+    fi
+else
+    # Mercure not installed, run installer
+    if [ ! -f "$MERCURE_INSTALL_SCRIPT" ]; then
+        echo -e "  ${YELLOW}⚠${NC} Mercure install script not found: $MERCURE_INSTALL_SCRIPT"
+        echo -e "  ${YELLOW}⚠${NC} Skipping Mercure installation. Install manually:"
+        echo -e "     cd mercure && source config-generated/install.env && sudo ./install_rhel_v2.sh -y"
+    else
+        echo -e "  ${CYAN}Installing Mercure...${NC}"
+        
+        # Source install environment variables
+        if [ -f "$REPO_ROOT/mercure/config-generated/install.env" ]; then
+            source "$REPO_ROOT/mercure/config-generated/install.env"
+        fi
+        
+        # Export MERCURE_DB_PATH for installer to use
+        export MERCURE_DB_PATH="${MERCURE_DB_PATH:-/opt/mercure/db}"
+        
+        # Copy db.env to config directory before install (installer reads from there)
+        if [ -f "$REPO_ROOT/mercure/config-generated/db.env" ]; then
+            mkdir -p "$REPO_ROOT/mercure/config"
+            cp "$REPO_ROOT/mercure/config-generated/db.env" "$REPO_ROOT/mercure/config/db.env"
+        fi
+        
+        # Run installer from mercure directory
+        cd "$REPO_ROOT/mercure"
+        chmod +x "$MERCURE_INSTALL_SCRIPT"
+        
+        # Run installer with -y flag for non-interactive
+        if sudo bash "$MERCURE_INSTALL_SCRIPT" -y; then
+            echo -e "  ${GREEN}✓${NC} Mercure installed successfully"
+            
+            # Copy generated mercure.json to installed location
+            if [ -f "$MERCURE_JSON_OUTPUT" ] && [ -d "$MERCURE_CONFIG_DIR" ]; then
+                sudo cp "$MERCURE_JSON_OUTPUT" "$MERCURE_CONFIG_DIR/mercure.json"
+                sudo chown mercure:mercure "$MERCURE_CONFIG_DIR/mercure.json" 2>/dev/null || \
+                    sudo chown root:root "$MERCURE_CONFIG_DIR/mercure.json"
+                sudo chmod 644 "$MERCURE_CONFIG_DIR/mercure.json"
+                echo -e "  ${GREEN}✓${NC} Copied mercure.json to $MERCURE_CONFIG_DIR"
+            fi
+        else
+            echo -e "  ${RED}✗${NC} Mercure installation failed"
+            echo -e "  ${YELLOW}⚠${NC} You can install manually:"
+            echo -e "     cd mercure && source config-generated/install.env && sudo ./install_rhel_v2.sh -y"
+        fi
+        
+        # Return to original directory
+        cd "$REPO_ROOT"
+    fi
+fi
 
 # =============================================================================
 # Generate Monitoring .env
@@ -375,39 +466,38 @@ cat > "$REPO_ROOT/monitoring/.env" << EOF
 # Re-run 'make setup-config' to regenerate
 
 # Workflow Tracking
-WORKFLOW_UI_PORT=${MONITORING_UI_PORT}
 WORKFLOW_API_PORT=${MONITORING_API_PORT}
 WORKFLOW_DB_NAME=workflow_tracking
 WORKFLOW_DB_USER=${WORKFLOW_DB_USER}
 WORKFLOW_DB_PASS=${WORKFLOW_DB_PASS}
 
 # Orthanc Connection
-ORTHANC_URL=http://${DOCKER_HOST_GATEWAY}:${ORTHANC_WEB_PORT}
+ORTHANC_URL=http://orthanc-server:8042
 ORTHANC_USER=${ORTHANC_ADMIN_USER}
 ORTHANC_PASS=${ORTHANC_ADMIN_PASS}
 
 # Orthanc Database
-ORTHANC_DB_HOST=${DOCKER_HOST_GATEWAY}
-ORTHANC_DB_PORT=${ORTHANC_DB_PORT}
+ORTHANC_DB_HOST=orthanc-postgres
+ORTHANC_DB_PORT=5432
 ORTHANC_DB_USER=${ORTHANC_DB_USER}
 ORTHANC_DB_PASS=${ORTHANC_DB_PASS}
 
 # Mercure Database
-MERCURE_DB_HOST=${DOCKER_HOST_GATEWAY}
-MERCURE_DB_PORT=${MERCURE_DB_PORT}
+MERCURE_DB_HOST=mercure_db_1
+MERCURE_DB_PORT=5432
 MERCURE_DB_NAME=mercure
 MERCURE_DB_USER=${MERCURE_DB_USER}
 MERCURE_DB_PASS=${MERCURE_DB_PASS}
 
 # Mercure Bookkeeper Database (for workflow recovery and analytics)
-BOOKKEEPER_DB_HOST=${DOCKER_HOST_GATEWAY}
-BOOKKEEPER_DB_PORT=${MERCURE_DB_PORT}
+BOOKKEEPER_DB_HOST=mercure_db_1
+BOOKKEEPER_DB_PORT=5432
 BOOKKEEPER_DB_NAME=mercure
 BOOKKEEPER_DB_USER=${MERCURE_DB_USER}
 BOOKKEEPER_DB_PASS=${MERCURE_DB_PASS}
 
 # Orthanc API Connection (for workflow filtering)
-ORTHANC_API_URL=http://${DOCKER_HOST_GATEWAY}:${ORTHANC_WEB_PORT}
+ORTHANC_API_URL=http://orthanc-server:8042
 ORTHANC_USERNAME=${ORTHANC_ADMIN_USER}
 ORTHANC_PASSWORD=${ORTHANC_ADMIN_PASS}
 
@@ -443,6 +533,9 @@ cat > "$REPO_ROOT/monitoring-v2/.env" << EOF
 # Monitoring - Metrics Collection Stack
 # Generated from config.env.template by setup-config.sh
 
+# Database Storage Path
+MONITORING_DB_STORAGE=${MONITORING_DB_STORAGE}
+
 # Grafana
 GRAFANA_PORT=${GRAFANA_PORT}
 GRAFANA_USER=${GRAFANA_USER}
@@ -462,6 +555,7 @@ MONITORING_DB_NAME=${MONITORING_DB_NAME:-monitoring}
 MONITORING_DB_USER=${MONITORING_DB_USER}
 MONITORING_DB_PASS=${MONITORING_DB_PASS}
 MONITORING_DB_HOST=postgres
+MONITORING_DB_STORAGE=${MONITORING_DB_STORAGE}
 EOF
 echo -e "  ${GREEN}✓${NC} monitoring-v2/.env created"
 
@@ -494,6 +588,41 @@ else
     echo -e "  ${YELLOW}⚠${NC} Template not found: $PROMETHEUS_TEMPLATE (using static config)"
 fi
 
+# Generate Monitoring v2 Grafana datasources config from template
+echo -e "${CYAN}Generating monitoring-v2/config/grafana/provisioning/datasources/datasources.yml...${NC}"
+
+GRAFANA_DATASOURCES_TEMPLATE="$REPO_ROOT/monitoring-v2/config/grafana/provisioning/datasources/datasources.yml.template"
+GRAFANA_DATASOURCES_OUTPUT="$REPO_ROOT/monitoring-v2/config/grafana/provisioning/datasources/datasources.yml"
+
+if [ -f "$GRAFANA_DATASOURCES_TEMPLATE" ]; then
+    # Export all required variables for Grafana datasources
+    # Use service names on shared network instead of host gateway
+    export MONITORING_DB_NAME
+    export MONITORING_DB_USER
+    export MONITORING_DB_PASS
+    export BOOKKEEPER_DB_PORT="5432"  # Internal port, not host port
+    export BOOKKEEPER_DB_NAME="${BOOKKEEPER_DB_NAME:-${MERCURE_DB_NAME:-mercure}}"
+    export BOOKKEEPER_DB_USER="${BOOKKEEPER_DB_USER:-${MERCURE_DB_USER:-mercure}}"
+    export BOOKKEEPER_DB_PASS="${BOOKKEEPER_DB_PASS:-${MERCURE_DB_PASS}}"
+    export BOOKKEEPER_DB_HOST="mercure_db_1"  # Service name on shared network
+    
+    # Remove if it exists as a directory (from previous errors)
+    if [ -d "$GRAFANA_DATASOURCES_OUTPUT" ]; then
+        rm -rf "$GRAFANA_DATASOURCES_OUTPUT"
+    fi
+    
+    envsubst '${MONITORING_DB_NAME} ${MONITORING_DB_USER} ${MONITORING_DB_PASS} ${BOOKKEEPER_DB_HOST} ${BOOKKEEPER_DB_PORT} ${BOOKKEEPER_DB_NAME} ${BOOKKEEPER_DB_USER} ${BOOKKEEPER_DB_PASS}' \
+        < "$GRAFANA_DATASOURCES_TEMPLATE" \
+        > "$GRAFANA_DATASOURCES_OUTPUT"
+    
+    # Set permissions: readable by container (644), but gitignored (contains passwords)
+    chmod 644 "$GRAFANA_DATASOURCES_OUTPUT"
+    
+    echo -e "  ${GREEN}✓${NC} monitoring-v2/config/grafana/provisioning/datasources/datasources.yml created"
+else
+    echo -e "  ${YELLOW}⚠${NC} Template not found: $GRAFANA_DATASOURCES_TEMPLATE (using static config)"
+fi
+
 # =============================================================================
 # Set Secure File Permissions
 # =============================================================================
@@ -515,6 +644,9 @@ echo -e "  ${GREEN}✓${NC} monitoring/.env (600)"
 
 chmod 600 "$REPO_ROOT/monitoring-v2/.env"
 echo -e "  ${GREEN}✓${NC} monitoring-v2/.env (600)"
+
+chmod 644 "$REPO_ROOT/monitoring-v2/config/grafana/provisioning/datasources/datasources.yml" 2>/dev/null || true
+echo -e "  ${GREEN}✓${NC} monitoring-v2/config/grafana/provisioning/datasources/datasources.yml (644)"
 
 chmod 600 "$REPO_ROOT/mercure/config-generated/db.env"
 chmod 600 "$REPO_ROOT/mercure/config-generated/install.env"
@@ -548,16 +680,15 @@ echo "  • monitoring-v2/.env"
 echo ""
 echo -e "${CYAN}Next steps:${NC}"
 echo ""
-echo "  1. Start Monitoring:    cd monitoring && make start"
-echo "  2. Start Orthanc:       cd orthanc && make setup && make start"
-echo "  3. Install Mercure:     cd mercure && source config-generated/install.env && sudo ./install_rhel_v2.sh -y"
+echo "  1. Start Monitoring:    sudo make monitoring-start"
+echo "  2. Start Orthanc:       sudo make orthanc-start"
+echo "  3. Start Mercure:       sudo make mercure-start"
 echo "  4. Build AI Module:     make ai-build"
 echo ""
 echo -e "${YELLOW}Port Summary:${NC}"
 echo "  Orthanc:     http://localhost:${ORTHANC_WEB_PORT}"
 echo "  OHIF:        http://localhost:${ORTHANC_OHIF_PORT}"
 echo "  Mercure:     http://localhost:${MERCURE_WEB_PORT}"
-echo "  Workflow UI: http://localhost:${MONITORING_UI_PORT}"
 echo "  Grafana:     http://localhost:${GRAFANA_PORT}"
 echo "  DICOM:       ${DICOM_PORT}"
 echo ""

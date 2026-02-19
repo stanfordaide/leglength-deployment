@@ -6,6 +6,7 @@ orthanc/.env
 orthanc/config/orthanc.json
 monitoring/.env
 monitoring-v2/config/prometheus/prometheus.yml
+monitoring-v2/config/grafana/provisioning/datasources/datasources.yml
 mercure/config-generated/
 
 # =============================================================================

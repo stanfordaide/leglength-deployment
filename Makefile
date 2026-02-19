@@ -10,7 +10,7 @@
         mercure-start mercure-stop mercure-logs mercure-clear mercure-setup mercure-ps \
         monitoring-start monitoring-stop monitoring-logs monitoring-clear monitoring-setup monitoring-ps \
         ai-build ai-test ai-push ai-clean ai-info \
-        init setup setup-config clean clean-all ps
+        init setup setup-config clean clean-all clean-configs ps verify
 
 # Colors (using printf-compatible format)
 CYAN    := \033[36m
@@ -77,6 +77,11 @@ help:
 	@printf "         'setup' generates component-specific configs (.env files).\n"
 	@printf "         '<service>-setup' prepares that service's directories.\n"
 	@printf "\n"
+	@printf "$(BOLD)Verification:$(RESET)\n"
+	@printf "    make verify          Check all services are healthy\n"
+	@printf "    make status          Show service status\n"
+	@printf "    make urls            Show service URLs\n"
+	@printf "\n"
 	@printf "$(BOLD)Cleanup:$(RESET)\n"
 	@printf "    make clean           Stop containers, keep data\n"
 	@printf "    make clean-all       $(RED)DANGER$(RESET) Remove everything\n"
@@ -118,12 +123,10 @@ start-all: mercure-start orthanc-start monitoring-start
 	@printf "$(GREEN)✅ All services started!$(RESET)\n"
 	@printf "\n"
 	@printf "Access points:\n"
-	@printf "  Orthanc Dashboard:  http://localhost:9010\n"
-	@printf "  Orthanc Web:        http://localhost:9011\n"
+	@printf "  Orthanc Web:        http://localhost:9010\n"
 	@printf "  OHIF Viewer:        http://localhost:9012\n"
 	@printf "  Mercure:            http://localhost:9020\n"
-	@printf "  Workflow UI:        http://localhost:9030\n"
-	@printf "  Grafana:            http://localhost:9032\n"
+	@printf "  Grafana:            http://localhost:9030\n"
 
 stop-all: monitoring-stop orthanc-stop mercure-stop
 	@printf "$(YELLOW)All services stopped.$(RESET)\n"
@@ -135,8 +138,7 @@ urls:
 	@printf "$(BOLD)$(CYAN)Service URLs$(RESET)\n"
 	@printf "\n"
 	@printf "$(GREEN)Orthanc$(RESET)\n"
-	@printf "  Dashboard:     http://localhost:9010\n"
-	@printf "  Web/API:       http://localhost:9011\n"
+	@printf "  Web/API:       http://localhost:9010\n"
 	@printf "  OHIF Viewer:   http://localhost:9012\n"
 	@printf "  DICOM:         localhost:4242 (C-STORE)\n"
 	@printf "\n"
@@ -144,9 +146,48 @@ urls:
 	@printf "  Web UI:        http://localhost:9020\n"
 	@printf "\n"
 	@printf "$(GREEN)Monitoring$(RESET)\n"
-	@printf "  Workflow UI:   http://localhost:9030\n"
-	@printf "  Grafana:       http://localhost:9032\n"
+	@printf "  Grafana:       http://localhost:9030\n"
 	@printf "  Prometheus:    http://localhost:9033\n"
+
+verify:
+	@printf "$(BOLD)$(CYAN)Verifying Installation...$(RESET)\n"
+	@printf "\n"
+	@printf "$(CYAN)Checking services...$(RESET)\n"
+	@FAILED=0; \
+	ORTHANC_CODE=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9010/system 2>/dev/null || echo "000"); \
+	if [ "$$ORTHANC_CODE" = "200" ] || [ "$$ORTHANC_CODE" = "401" ]; then \
+		printf "$(GREEN)✅ Orthanc: OK (HTTP $$ORTHANC_CODE)$(RESET)\n"; \
+	else \
+		printf "$(RED)❌ Orthanc: Not responding (HTTP $$ORTHANC_CODE)$(RESET)\n"; \
+		FAILED=$$((FAILED + 1)); \
+	fi; \
+	MERCURE_CODE=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9020 2>/dev/null || echo "000"); \
+	if [ "$$MERCURE_CODE" = "200" ] || [ "$$MERCURE_CODE" = "302" ]; then \
+		printf "$(GREEN)✅ Mercure: OK (HTTP $$MERCURE_CODE)$(RESET)\n"; \
+	else \
+		printf "$(RED)❌ Mercure: Not responding (HTTP $$MERCURE_CODE)$(RESET)\n"; \
+		FAILED=$$((FAILED + 1)); \
+	fi; \
+	GRAFANA_CODE=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9030/api/health 2>/dev/null || echo "000"); \
+	if [ "$$GRAFANA_CODE" = "200" ]; then \
+		printf "$(GREEN)✅ Grafana: OK (HTTP $$GRAFANA_CODE)$(RESET)\n"; \
+	else \
+		printf "$(RED)❌ Grafana: Not responding (HTTP $$GRAFANA_CODE)$(RESET)\n"; \
+		FAILED=$$((FAILED + 1)); \
+	fi; \
+	printf "\n"; \
+	if [ $$FAILED -eq 0 ]; then \
+		printf "$(GREEN)✅ All services are healthy!$(RESET)\n"; \
+		printf "\n"; \
+		printf "Access services:\n"; \
+		printf "  Orthanc:  http://localhost:9010\n"; \
+		printf "  Mercure:  http://localhost:9020\n"; \
+		printf "  Grafana:  http://localhost:9030\n"; \
+	else \
+		printf "$(YELLOW)⚠️  Some services are not responding.$(RESET)\n"; \
+		printf "Run 'make status' to check container status.\n"; \
+		exit 1; \
+	fi
 
 # =============================================================================
 # ORTHANC - DICOM PACS Server
@@ -154,6 +195,10 @@ urls:
 
 orthanc-start:
 	@printf "$(CYAN)Starting Orthanc...$(RESET)\n"
+	@if ! sudo docker network inspect leglength-network >/dev/null 2>&1; then \
+		printf "$(CYAN)Creating Docker network...$(RESET)\n"; \
+		sudo docker network create leglength-network; \
+	fi
 	@cd orthanc && sudo make setup && sudo make start && sudo make seed-modalities
 	@printf "$(GREEN)✅ Orthanc started$(RESET)\n"
 
@@ -312,6 +357,10 @@ mercure-clear:
 
 monitoring-start:
 	@printf "$(CYAN)Starting Monitoring stack...$(RESET)\n"
+	@if ! sudo docker network inspect leglength-network >/dev/null 2>&1; then \
+		printf "$(CYAN)Creating Docker network...$(RESET)\n"; \
+		sudo docker network create leglength-network; \
+	fi
 	@if [ ! -f "monitoring-v2/config/prometheus/prometheus.yml" ]; then \
 		printf "$(RED)❌ ERROR: prometheus.yml not found!$(RESET)\n"; \
 		printf "   Run 'make setup' first to generate configs.\n"; \
@@ -429,6 +478,16 @@ clean:
 	@cd monitoring-v2 && docker compose down 2>/dev/null || true
 	@printf "$(GREEN)✅ All containers stopped. Data preserved.$(RESET)\n"
 
+clean-configs:
+	@printf "$(YELLOW)Removing generated config files...$(RESET)\n"
+	@rm -f orthanc/.env orthanc/config/orthanc.json 2>/dev/null || true
+	@rm -f monitoring-v2/.env 2>/dev/null || true
+	@rm -f monitoring-v2/config/grafana/provisioning/datasources/datasources.yml 2>/dev/null || true
+	@rm -rf mercure/config-generated/ 2>/dev/null || true
+	@printf "$(GREEN)✅ Generated configs removed$(RESET)\n"
+	@printf "\n"
+	@printf "Next step: Run 'make setup' to regenerate configs\n"
+
 clean-all:
 	@printf "$(RED)╔══════════════════════════════════════════════════════════════╗$(RESET)\n"
 	@printf "$(RED)║  ⚠️  DANGER: This will PERMANENTLY DELETE everything:        ║$(RESET)\n"
@@ -452,10 +511,8 @@ clean-all:
 	@sudo rm -rf /home/orthanc/orthanc-storage
 	@sudo rm -rf /home/orthanc/postgres-data
 	@printf "$(YELLOW)Removing generated configs...$(RESET)\n"
-	@rm -f orthanc/.env orthanc/config/orthanc.json
-	@rm -f monitoring-v2/.env
-	@rm -rf mercure/config-generated/
-	@rm -f config.env
+	@$(MAKE) clean-configs
+	@rm -f config.env 2>/dev/null || true
 	@printf "$(YELLOW)Docker cleanup...$(RESET)\n"
 	@sudo docker stop $$(sudo docker ps -aq) 2>/dev/null || true
 	@sudo docker rm $$(sudo docker ps -aq) 2>/dev/null || true
@@ -470,8 +527,9 @@ clean-all:
 	@printf "  make init\n"
 	@printf "  nano config.env\n"
 	@printf "  make setup\n"
-	@printf "  make start-all\n"
 	@printf "  make ai-build\n"
+	@printf "  make start-all\n"
+	@printf "  make verify\n"
 
 .PHONY: workflow-sync
 workflow-sync:

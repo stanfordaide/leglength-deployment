@@ -1,5 +1,6 @@
 # Grafana Datasources Configuration
 # Pre-configured to read from Prometheus (Orthanc), Graphite (Mercure), PostgreSQL, and Mercure Bookkeeper
+# This file is processed by setup-config.sh to generate datasources.yml
 
 apiVersion: 1
 
@@ -33,10 +34,10 @@ datasources:
     type: postgres
     access: proxy
     url: postgres:5432
-    database: ${MONITORING_DB_NAME:-monitoring}
-    user: ${MONITORING_DB_USER:-monitoring}
+    database: ${MONITORING_DB_NAME}
+    user: ${MONITORING_DB_USER}
     secureJsonData:
-      password: ${MONITORING_DB_PASS:-monitoring123}
+      password: ${MONITORING_DB_PASS}
     editable: true
     jsonData:
       sslmode: disable
@@ -47,17 +48,17 @@ datasources:
       connMaxLifetime: 14400
 
   # PostgreSQL - Mercure Bookkeeper database (read Mercure dispatcher data)
-  # Note: This connects to Mercure's PostgreSQL database via the host gateway
+  # Note: This connects to Mercure's PostgreSQL database via service name on shared network
   # The database contains: dicom_series, series_events, dicom_files, mercure_events
   - name: PostgreSQL (Mercure Bookkeeper)
     uid: postgres-mercure
     type: postgres
     access: proxy
-    url: ${DOCKER_HOST_GATEWAY:-172.17.0.1}:${MERCURE_DB_PORT:-9022}
-    database: ${MERCURE_DB_NAME:-mercure}
-    user: ${MERCURE_DB_USER:-mercure}
+    url: ${BOOKKEEPER_DB_HOST}:${BOOKKEEPER_DB_PORT}
+    database: ${BOOKKEEPER_DB_NAME}
+    user: ${BOOKKEEPER_DB_USER}
     secureJsonData:
-      password: ${MERCURE_DB_PASS}
+      password: ${BOOKKEEPER_DB_PASS}
     editable: true
     jsonData:
       sslmode: disable

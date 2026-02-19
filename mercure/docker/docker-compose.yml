@@ -30,6 +30,7 @@ services:
     env_file:
       - /opt/mercure/config/timezone.env
     networks:
+      - leglength-network
       - mercure_network
 
   db:
@@ -42,13 +43,13 @@ services:
       POSTGRES_USER: mercure
       POSTGRES_DB: mercure
       PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "9022:5432"  # Mercure DB - 9020 series
+    # Database port not exposed to host - internal access only via service name
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U mercure" ]
     networks:
+      - leglength-network
       - mercure_network
 
   receiver:
@@ -71,6 +72,7 @@ services:
     env_file:
       - /opt/mercure/config/timezone.env
     networks:
+      - leglength-network
       - mercure_network
 
   cleaner:
@@ -91,6 +93,7 @@ services:
     env_file:
       - /opt/mercure/config/timezone.env
     networks:
+      - leglength-network
       - mercure_network
 
   dispatcher:
@@ -111,6 +114,7 @@ services:
     env_file:
       - /opt/mercure/config/timezone.env
     networks:
+      - leglength-network
       - mercure_network
 
   processor:
@@ -132,6 +136,7 @@ services:
     env_file:
       - /opt/mercure/config/timezone.env
     networks:
+      - leglength-network
       - mercure_network
 
   router:
@@ -152,6 +157,7 @@ services:
     env_file:
       - /opt/mercure/config/timezone.env
     networks:
+      - leglength-network
       - mercure_network
 
   bookkeeper:
@@ -172,6 +178,7 @@ services:
     env_file:
       - /opt/mercure/config/timezone.env
     networks:
+      - leglength-network
       - mercure_network
   
   redis:
@@ -182,6 +189,7 @@ services:
     volumes: 
       - redis-cache:/data
     networks:
+      - leglength-network
       - mercure_network
 
   worker_fast_1:
@@ -198,6 +206,7 @@ services:
       WORKER_QUEUE: mercure_fast
       REDIS_URL: redis://redis:6379/0
     networks:
+      - leglength-network
       - mercure_network
 
   worker_fast_2:
@@ -214,6 +223,7 @@ services:
       WORKER_QUEUE: mercure_fast
       REDIS_URL: redis://redis:6379/0
     networks:
+      - leglength-network
       - mercure_network
 
   worker_slow_1:
@@ -230,6 +240,7 @@ services:
       WORKER_QUEUE: mercure_slow
       REDIS_URL: redis://redis:6379/0
     networks:
+      - leglength-network
       - mercure_network
 
   worker_slow_2:
@@ -246,11 +257,18 @@ services:
       WORKER_QUEUE: mercure_slow
       REDIS_URL: redis://redis:6379/0
     networks:
+      - leglength-network
       - mercure_network
 
 networks:
+  leglength-network:
+    external: true
+    name: leglength-network
   mercure_network:
     name: mercure_default
+    # Mercure services use both networks:
+    # - leglength-network: for communication with Orthanc and Monitoring
+    # - mercure_network: for internal Mercure service communication
 
 volumes:
   db-data:
@@ -258,7 +276,7 @@ volumes:
     driver_opts:
       type: 'none'
       o: 'bind'
-      device: '/opt/mercure/db'
+      device: '${MERCURE_DB_PATH:-/opt/mercure/db}'
 
   data:
     driver: local
