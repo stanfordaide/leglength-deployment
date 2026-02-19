@@ -374,7 +374,8 @@ fi
 # Export all variables that might be in the template
 export MONITORING_DATA_PATH
 export GRAPHITE_IP="graphite"  # Use service name on shared network
-export GRAPHITE_PORT="${GRAPHITE_PORT:-2003}"  # Internal port
+# IMPORTANT: Mercure connects from within Docker network, so use INTERNAL port (2003), not external port (9038)
+export GRAPHITE_PORT="2003"  # Internal Carbon receiver port (always 2003, regardless of config.env)
 export MONITORING_DB_HOST="${MONITORING_DB_HOST:-postgres}"  # Service name
 export MONITORING_DB_NAME="${MONITORING_DB_NAME:-monitoring}"
 export MONITORING_DB_USER="${MONITORING_DB_USER:-monitoring}"
