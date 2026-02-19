@@ -602,7 +602,7 @@ def main():
     
     # Initialize monitoring (DISABLED)
     # Monitoring has been disabled - metrics will be emitted directly to Graphite instead
-    monitor = None
+        monitor = None
     logger.info("Monitoring disabled - metrics will be emitted to Graphite via Mercure")
     
     # Validate configuration

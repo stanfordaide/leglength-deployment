@@ -102,6 +102,7 @@ services:
       - GF_INSTALL_PLUGINS=
       - GF_SERVER_ROOT_URL=http://localhost:9032
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=master-dashboard
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro

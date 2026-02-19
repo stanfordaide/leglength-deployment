@@ -356,14 +356,14 @@ class MetricsCollector:
             return None
         
         session = self.sessions[session_id]
-        config = session.get('config', {})
-        dicom_path = session.get('dicom_path')
-        
-        # Extract DICOM metadata
-        dicom_metadata = {}
-        if dicom_path:
-            dicom_metadata = self._extract_dicom_metadata(dicom_path)
-        
+            config = session.get('config', {})
+            dicom_path = session.get('dicom_path')
+            
+            # Extract DICOM metadata
+            dicom_metadata = {}
+            if dicom_path:
+                dicom_metadata = self._extract_dicom_metadata(dicom_path)
+            
         # 1. Metadata
         metadata: Metadata = {
             'event_id': str(uuid.uuid4()),
@@ -397,7 +397,7 @@ class MetricsCollector:
         }
         
         # 4. Raw Predictions
-        performance_data = session.get('performance_data', {})
+                        performance_data = session.get('performance_data', {})
         individual_preds = performance_data.get('individual_model_predictions', {})
         raw_predictions: Dict[str, ModelPrediction] = {}
         
@@ -462,7 +462,7 @@ class MetricsCollector:
         DEPRECATED: Format session data for Prometheus.
         Retained for backward compatibility if Prometheus client is re-added.
         """
-        return {}
+            return {}
     
     def cleanup_session(self, session_id: str) -> None:
         """
