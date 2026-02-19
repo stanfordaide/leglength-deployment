@@ -370,14 +370,19 @@ if [ -z "$MONITORING_DATA_PATH" ]; then
     MONITORING_DATA_PATH="/opt/mercure/monitoring-events"
     echo -e "  ${YELLOW}⚠${NC} MONITORING_DATA_PATH not set, using default: $MONITORING_DATA_PATH"
 fi
+
+# Export all variables that might be in the template
 export MONITORING_DATA_PATH
+export GRAPHITE_IP="graphite"  # Use service name on shared network
+export GRAPHITE_PORT="${GRAPHITE_PORT:-2003}"  # Internal port
+export MONITORING_DB_HOST="${MONITORING_DB_HOST:-postgres}"  # Service name
+export MONITORING_DB_NAME="${MONITORING_DB_NAME:-monitoring}"
+export MONITORING_DB_USER="${MONITORING_DB_USER:-monitoring}"
+export MONITORING_DB_PASS="${MONITORING_DB_PASS:-monitoring123}"
+export MONITORING_DB_PORT="${MONITORING_DB_PORT:-5432}"  # Must have a value (unquoted in JSON)
 
-# Use service names on shared network instead of host gateway
-export GRAPHITE_IP="graphite"
-export GRAPHITE_PORT="2003"  # Internal port, not host port
-
-# Validate JSON after substitution
-envsubst '${MONITORING_DATA_PATH} ${GRAPHITE_IP} ${GRAPHITE_PORT}' \
+# Validate JSON after substitution - include all possible variables
+envsubst '${MONITORING_DATA_PATH} ${GRAPHITE_IP} ${GRAPHITE_PORT} ${MONITORING_DB_HOST} ${MONITORING_DB_NAME} ${MONITORING_DB_USER} ${MONITORING_DB_PASS} ${MONITORING_DB_PORT}' \
     < "$MERCURE_JSON_TEMPLATE" \
     > "$MERCURE_JSON_OUTPUT"
 

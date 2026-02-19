@@ -25,7 +25,7 @@
     "dicom_receiver": {
         "additional_tags": {}
     },
-    "graphite_ip": "${DOCKER_HOST_GATEWAY}",
+    "graphite_ip": "${GRAPHITE_IP}",
     "graphite_port": ${GRAPHITE_PORT},
     "influxdb_host": "",
     "influxdb_token": "",
