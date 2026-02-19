@@ -282,6 +282,17 @@ mercure-start:
 		sudo mkdir -p /opt/mercure/persistence; \
 		sudo chown -R $$MERCURE_UID:$$MERCURE_GID /opt/mercure/data /opt/mercure/persistence 2>/dev/null || \
 			sudo chmod -R 777 /opt/mercure/data /opt/mercure/persistence; \
+		printf "$(CYAN)Ensuring configuration file exists...$(RESET)\n"; \
+		if [ -f "mercure/config-generated/mercure.json" ] && [ -d "/opt/mercure/config" ]; then \
+			sudo cp mercure/config-generated/mercure.json /opt/mercure/config/mercure.json && \
+			sudo chown mercure:mercure /opt/mercure/config/mercure.json 2>/dev/null || \
+				sudo chown root:root /opt/mercure/config/mercure.json; \
+			sudo chmod 644 /opt/mercure/config/mercure.json; \
+			printf "  $(GREEN)✅$(RESET) mercure.json copied to /opt/mercure/config/\n"; \
+		elif [ ! -f "/opt/mercure/config/mercure.json" ]; then \
+			printf "  $(YELLOW)⚠️$(RESET) mercure.json not found! Run 'make setup' first.\n"; \
+			exit 1; \
+		fi; \
 		cd /opt/mercure && sudo docker compose up -d; \
 	else \
 		chmod +x scripts/install-mercure.sh && ./scripts/install-mercure.sh -y; \

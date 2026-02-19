@@ -377,6 +377,27 @@ envsubst '${MONITORING_DATA_PATH} ${GRAPHITE_IP} ${GRAPHITE_PORT}' \
 echo -e "  ${GREEN}✓${NC} mercure/config-generated/mercure.json created"
 
 # =============================================================================
+# Copy config to source location for installer to use
+# =============================================================================
+# The installer copies from mercure/configuration/default_mercure.json
+# So we copy our generated config there BEFORE installation
+MERCURE_SOURCE_CONFIG_DIR="$REPO_ROOT/mercure/configuration"
+MERCURE_SOURCE_CONFIG_FILE="$MERCURE_SOURCE_CONFIG_DIR/default_mercure.json"
+
+if [ ! -f "$MERCURE_JSON_OUTPUT" ]; then
+    echo -e "  ${RED}✗${NC} ERROR: Generated mercure.json not found: $MERCURE_JSON_OUTPUT"
+    exit 1
+fi
+
+# Copy to source configuration directory so installer will use it
+mkdir -p "$MERCURE_SOURCE_CONFIG_DIR"
+cp "$MERCURE_JSON_OUTPUT" "$MERCURE_SOURCE_CONFIG_FILE" || {
+    echo -e "  ${RED}✗${NC} ERROR: Failed to copy config to source location"
+    exit 1
+}
+echo -e "  ${GREEN}✓${NC} Copied config to $MERCURE_SOURCE_CONFIG_FILE (installer will use this)"
+
+# =============================================================================
 # Install Mercure (if not already installed)
 # =============================================================================
 echo -e "${CYAN}Checking Mercure installation...${NC}"
@@ -391,13 +412,14 @@ if [ -d "$MERCURE_INSTALL_DIR" ] && [ -f "$MERCURE_CONFIG_DIR/mercure.json" ]; t
     echo -e "  ${CYAN}Updating configuration...${NC}"
     
     # Copy generated mercure.json to installed location
-    if [ -f "$MERCURE_JSON_OUTPUT" ]; then
-        sudo cp "$MERCURE_JSON_OUTPUT" "$MERCURE_CONFIG_DIR/mercure.json"
-        sudo chown mercure:mercure "$MERCURE_CONFIG_DIR/mercure.json" 2>/dev/null || \
-            sudo chown root:root "$MERCURE_CONFIG_DIR/mercure.json"
-        sudo chmod 644 "$MERCURE_CONFIG_DIR/mercure.json"
-        echo -e "  ${GREEN}✓${NC} Updated $MERCURE_CONFIG_DIR/mercure.json"
-    fi
+    sudo cp "$MERCURE_JSON_OUTPUT" "$MERCURE_CONFIG_DIR/mercure.json" || {
+        echo -e "  ${RED}✗${NC} ERROR: Failed to copy mercure.json to $MERCURE_CONFIG_DIR"
+        exit 1
+    }
+    sudo chown mercure:mercure "$MERCURE_CONFIG_DIR/mercure.json" 2>/dev/null || \
+        sudo chown root:root "$MERCURE_CONFIG_DIR/mercure.json"
+    sudo chmod 644 "$MERCURE_CONFIG_DIR/mercure.json"
+    echo -e "  ${GREEN}✓${NC} Updated $MERCURE_CONFIG_DIR/mercure.json"
     
     # Update db.env if it exists
     if [ -f "$REPO_ROOT/mercure/config-generated/db.env" ]; then
@@ -415,6 +437,7 @@ else
         echo -e "     cd mercure && source config-generated/install.env && sudo ./install_rhel_v2.sh -y"
     else
         echo -e "  ${CYAN}Installing Mercure...${NC}"
+        echo -e "  ${CYAN}Note: Installer will use config from $MERCURE_SOURCE_CONFIG_FILE${NC}"
         
         # Source install environment variables
         if [ -f "$REPO_ROOT/mercure/config-generated/install.env" ]; then
@@ -435,16 +458,21 @@ else
         chmod +x "$MERCURE_INSTALL_SCRIPT"
         
         # Run installer with -y flag for non-interactive
+        # The installer will copy our config from configuration/default_mercure.json
         if sudo bash "$MERCURE_INSTALL_SCRIPT" -y; then
             echo -e "  ${GREEN}✓${NC} Mercure installed successfully"
-            
-            # Copy generated mercure.json to installed location
-            if [ -f "$MERCURE_JSON_OUTPUT" ] && [ -d "$MERCURE_CONFIG_DIR" ]; then
-                sudo cp "$MERCURE_JSON_OUTPUT" "$MERCURE_CONFIG_DIR/mercure.json"
+            # Verify config was installed correctly
+            if [ -f "$MERCURE_CONFIG_DIR/mercure.json" ]; then
+                echo -e "  ${GREEN}✓${NC} Config file installed at $MERCURE_CONFIG_DIR/mercure.json"
+            else
+                echo -e "  ${YELLOW}⚠${NC} Config file not found after installation, copying manually..."
+                sudo cp "$MERCURE_JSON_OUTPUT" "$MERCURE_CONFIG_DIR/mercure.json" || {
+                    echo -e "  ${RED}✗${NC} ERROR: Failed to copy mercure.json"
+                    exit 1
+                }
                 sudo chown mercure:mercure "$MERCURE_CONFIG_DIR/mercure.json" 2>/dev/null || \
                     sudo chown root:root "$MERCURE_CONFIG_DIR/mercure.json"
                 sudo chmod 644 "$MERCURE_CONFIG_DIR/mercure.json"
-                echo -e "  ${GREEN}✓${NC} Copied mercure.json to $MERCURE_CONFIG_DIR"
             fi
         else
             echo -e "  ${RED}✗${NC} Mercure installation failed"
