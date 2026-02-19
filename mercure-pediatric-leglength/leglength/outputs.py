@@ -278,12 +278,12 @@ class DicomProcessor:
         
         return new_ds
 
-    def _get_scale_factor(self, image: np.ndarray, reference_size: int = 1024) -> float:
+    def _get_scale_factor(self, image: np.ndarray, reference_size: int = 2048) -> float:
         """Calculate scale factor based on image dimensions.
         
         Args:
             image: Image array (h, w) or (h, w, c)
-            reference_size: Reference size for scaling (default 1024)
+            reference_size: Reference size for scaling (default 2048 - larger for better scaling on small images)
             
         Returns:
             Scale factor to apply to all visualization elements
@@ -292,8 +292,8 @@ class DicomProcessor:
         # Use average dimension for more balanced scaling
         avg_dim = (h + w) / 2.0
         scale_factor = avg_dim / reference_size
-        # Clamp scale factor to reasonable bounds (0.5x to 3x)
-        scale_factor = max(0.5, min(3.0, scale_factor))
+        # Clamp scale factor to reasonable bounds (0.3x to 2.5x) - tighter bounds for better calibration
+        scale_factor = max(0.3, min(2.5, scale_factor))
         return scale_factor
 
     def _create_visualization_image(self, results: dict, dicom_path: str) -> np.ndarray:
@@ -336,13 +336,11 @@ class DicomProcessor:
         # Draw all 8 keypoints first
         self._draw_all_keypoints(visualization, results, scale)
         
-        # Add professional legend for keypoint symbols
-        self._add_keypoint_legend(visualization, scale)
-        
         ## Add medical imaging overlay with patient info if available
         # self._add_medical_overlay(visualization, dcm)
         
         measurements_processed = 0
+        total_lengths = {}  # Store total lengths for bottom text
         
         # Draw measurements
         for measure in self.config['measurements']:
@@ -358,6 +356,13 @@ class DicomProcessor:
                 p1 = (int(points['start']['x']), int(points['start']['y']))
                 p2 = (int(points['end']['x']), int(points['end']['y']))
                 
+                # Skip drawing lines for total leg length measurements
+                is_total_length = name in ['PLL_R_LGL', 'PLL_L_LGL']
+                
+                # Store total lengths for bottom text
+                if is_total_length:
+                    total_lengths[name] = results['measurements'][name]['centimeters']
+                    continue  # Skip drawing lines and labels for total lengths
                 
                 # Validate coordinates are within image bounds
                 h, w = visualization.shape[:2]
@@ -392,6 +397,9 @@ class DicomProcessor:
         
         self.logger.info(f"Processed {measurements_processed} measurements")
         
+        # Add total leg lengths text at the bottom
+        self._add_total_lengths_text(visualization, total_lengths, scale)
+        
         # Save debug image with DICOM stem prefix
         from pathlib import Path
         dicom_stem = Path(dicom_path).stem
@@ -415,6 +423,55 @@ class DicomProcessor:
         self._add_stanford_watermark(visualization, scale)
         
         return visualization
+
+    def _add_total_lengths_text(self, visualization: np.ndarray, total_lengths: dict, scale: float = 1.0):
+        """Add text at the bottom showing total leg lengths."""
+        h, w = visualization.shape[:2]
+        
+        # Get total lengths
+        right_total = total_lengths.get('PLL_R_LGL', None)
+        left_total = total_lengths.get('PLL_L_LGL', None)
+        
+        if right_total is None and left_total is None:
+            return  # No total lengths to display
+        
+        # Build text string
+        text_parts = []
+        if right_total is not None:
+            text_parts.append(f"Right Total Leg Length = {right_total:.1f} cm")
+        if left_total is not None:
+            text_parts.append(f"Left Total Leg Length = {left_total:.1f} cm")
+        
+        text = ", ".join(text_parts)
+        
+        # Scale font
+        font = cv2.FONT_HERSHEY_DUPLEX
+        font_scale = 1.0 * scale
+        font_thickness = max(1, int(2 * scale))
+        
+        # Get text size
+        (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, font_thickness)
+        
+        # Position at bottom center with padding
+        padding = int(20 * scale)
+        text_x = (w - text_width) // 2
+        text_y = h - padding
+        
+        # Draw background rectangle for better visibility
+        bg_padding = int(10 * scale)
+        overlay = visualization.copy()
+        cv2.rectangle(overlay,
+                     (text_x - bg_padding, text_y - text_height - bg_padding),
+                     (text_x + text_width + bg_padding, text_y + baseline + bg_padding),
+                     (0, 0, 0), -1)  # Black background
+        
+        # Apply transparency
+        alpha = 0.8
+        cv2.addWeighted(overlay, alpha, visualization, 1 - alpha, 0, visualization)
+        
+        # Draw text in white
+        cv2.putText(visualization, text, (text_x, text_y),
+                   font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
     def _draw_measurement_line(self, visualization: np.ndarray, p1: tuple, p2: tuple, measurement_name: str, scale: float = 1.0):
         """Draw professional measurement line with gradient effect."""
