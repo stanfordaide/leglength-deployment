@@ -366,6 +366,8 @@ monitoring-start:
 		printf "   Run 'make setup' first to generate configs.\n"; \
 		exit 1; \
 	fi
+	@printf "$(CYAN)Ensuring monitoring directories exist...$(RESET)\n"
+	@cd monitoring-v2 && make setup
 	@cd monitoring-v2 && make start
 	@printf "$(GREEN)✅ Monitoring started$(RESET)\n"
 

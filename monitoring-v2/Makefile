@@ -37,6 +37,21 @@ setup:
 	@mkdir -p data/{prometheus,grafana,graphite}
 	@mkdir -p config/{prometheus,grafana/{provisioning/{datasources,dashboards},dashboards}}
 	@echo ""
+	@echo "Creating database storage directory..."
+	@if [ -f .env ]; then \
+		. ./.env && \
+		if [ -n "$$MONITORING_DB_STORAGE" ]; then \
+			echo "  Creating: $$MONITORING_DB_STORAGE"; \
+			sudo mkdir -p "$$MONITORING_DB_STORAGE" 2>/dev/null || mkdir -p "$$MONITORING_DB_STORAGE" 2>/dev/null || true; \
+			sudo chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null || \
+				chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null || \
+				echo "  ⚠️  Could not set ownership (may need sudo)"; \
+			echo "  ✅ Database storage directory ready"; \
+		else \
+			echo "  ⚠️  MONITORING_DB_STORAGE not set in .env"; \
+		fi; \
+	fi
+	@echo ""
 	@echo "Setup complete! .env file found."
 	@echo "Run 'make start' to start services"
 
