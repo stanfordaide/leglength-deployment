@@ -998,8 +998,10 @@ class DicomProcessor:
         circle_thickness = max(1, int(2 * scale))
         crosshair_thickness = max(1, int(1 * scale))
         
-        # Tiny dot size for individual model predictions (only visible when zoomed)
-        dot_radius = max(1, int(1 * scale))  # Very small, scales with image
+        # Dot size for individual model predictions (slightly larger, scales with image)
+        dot_radius = max(1, int(2 * scale))  # Small dots, scales with image
+        # Fused landmark dot is slightly larger
+        fused_dot_radius = max(1, int(3 * scale))  # Slightly larger for fused position
         
         # Draw all 8 keypoints
         for point_id in range(1, 9):
@@ -1022,7 +1024,7 @@ class DicomProcessor:
                 center_x = max(0, min(w-1, center_x))
                 center_y = max(0, min(h-1, center_y))
                 
-                # Draw tiny white dots for individual model predictions at this landmark
+                # Draw white dots for individual model predictions at this landmark
                 for model_name, model_data in individual_predictions.items():
                     predictions = model_data.get('predictions', {})
                     labels = predictions.get('labels', [])
@@ -1040,18 +1042,14 @@ class DicomProcessor:
                             model_x = max(0, min(w-1, model_x))
                             model_y = max(0, min(h-1, model_y))
                             
-                            # Draw tiny white dot (filled circle)
+                            # Draw white dot for individual model prediction (filled circle)
                             cv2.circle(visualization, (model_x, model_y), dot_radius, (255, 255, 255), -1)
                             break
                 
-                # Draw single hollow circle for fused landmark (same color for all)
-                cv2.circle(visualization, (center_x, center_y), circle_radius, keypoint_color, circle_thickness)
-                # Add crosshair that ends at circle border
-                cv2.line(visualization, (center_x-circle_radius, center_y), (center_x+circle_radius, center_y), keypoint_color, crosshair_thickness)
-                cv2.line(visualization, (center_x, center_y-circle_radius), (center_x, center_y+circle_radius), keypoint_color, crosshair_thickness)
-                
-                # Remove anatomical joint labels per medical imaging standards
-                # self._draw_professional_label(visualization, center_x, center_y, point_name, was_detected, scale)
+                # Draw fused landmark position with different color (yellow) and slightly larger
+                # Using (0, 255, 255) in BGR which appears as yellow in RGB viewers (distinct from white)
+                fused_color = (0, 255, 255)  # Yellow in BGR - appears as yellow in RGB, distinct from white
+                cv2.circle(visualization, (center_x, center_y), fused_dot_radius, fused_color, -1)
 
     def _add_keypoint_legend(self, visualization: np.ndarray, scale: float = 1.0):
         """Add professional legend explaining keypoint symbols."""
