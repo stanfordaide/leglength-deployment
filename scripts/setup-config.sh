@@ -365,16 +365,40 @@ EOF
 fi
 
 # Use envsubst to replace variables in template
+# Ensure MONITORING_DATA_PATH is set (default if not provided)
+if [ -z "$MONITORING_DATA_PATH" ]; then
+    MONITORING_DATA_PATH="/opt/mercure/monitoring-events"
+    echo -e "  ${YELLOW}⚠${NC} MONITORING_DATA_PATH not set, using default: $MONITORING_DATA_PATH"
+fi
 export MONITORING_DATA_PATH
+
 # Use service names on shared network instead of host gateway
 export GRAPHITE_IP="graphite"
 export GRAPHITE_PORT="2003"  # Internal port, not host port
 
+# Validate JSON after substitution
 envsubst '${MONITORING_DATA_PATH} ${GRAPHITE_IP} ${GRAPHITE_PORT}' \
     < "$MERCURE_JSON_TEMPLATE" \
     > "$MERCURE_JSON_OUTPUT"
 
-echo -e "  ${GREEN}✓${NC} mercure/config-generated/mercure.json created"
+# Validate the generated JSON
+if ! python3 -m json.tool "$MERCURE_JSON_OUTPUT" > /dev/null 2>&1; then
+    echo -e "  ${RED}✗${NC} ERROR: Generated mercure.json is invalid JSON!"
+    echo -e "  ${YELLOW}Checking for common issues...${NC}"
+    # Check for empty variables
+    if grep -q '"\${' "$MERCURE_JSON_OUTPUT" 2>/dev/null; then
+        echo -e "  ${RED}✗${NC} Found unsubstituted variables in JSON!"
+        grep -n '"\${' "$MERCURE_JSON_OUTPUT" | head -5
+    fi
+    # Check for trailing commas or syntax issues around line 123
+    if [ -f "$MERCURE_JSON_OUTPUT" ]; then
+        echo -e "  ${YELLOW}Context around line 123:${NC}"
+        sed -n '118,128p' "$MERCURE_JSON_OUTPUT" | cat -n
+    fi
+    exit 1
+fi
+
+echo -e "  ${GREEN}✓${NC} mercure/config-generated/mercure.json created and validated"
 
 # =============================================================================
 # Copy config to source location for installer to use
