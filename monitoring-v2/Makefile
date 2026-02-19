@@ -41,15 +41,38 @@ setup:
 	@if [ -f .env ]; then \
 		. ./.env && \
 		if [ -n "$$MONITORING_DB_STORAGE" ]; then \
-			echo "  Creating: $$MONITORING_DB_STORAGE"; \
-			sudo mkdir -p "$$MONITORING_DB_STORAGE" 2>/dev/null || mkdir -p "$$MONITORING_DB_STORAGE" 2>/dev/null || true; \
-			sudo chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null || \
-				chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null || \
+			echo "  Target: $$MONITORING_DB_STORAGE"; \
+			if [ ! -d "$$MONITORING_DB_STORAGE" ]; then \
+				echo "  Creating directory..."; \
+				if sudo mkdir -p "$$MONITORING_DB_STORAGE" 2>&1; then \
+					echo "  ✅ Directory created"; \
+				elif mkdir -p "$$MONITORING_DB_STORAGE" 2>&1; then \
+					echo "  ✅ Directory created (without sudo)"; \
+				else \
+					echo "  ❌ ERROR: Failed to create directory!"; \
+					echo "  Please create manually: sudo mkdir -p $$MONITORING_DB_STORAGE"; \
+					exit 1; \
+				fi; \
+			else \
+				echo "  ✅ Directory already exists"; \
+			fi; \
+			if sudo chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null; then \
+				echo "  ✅ Ownership set to postgres (999:999)"; \
+			elif chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null; then \
+				echo "  ✅ Ownership set (without sudo)"; \
+			else \
 				echo "  ⚠️  Could not set ownership (may need sudo)"; \
-			echo "  ✅ Database storage directory ready"; \
+			fi; \
 		else \
 			echo "  ⚠️  MONITORING_DB_STORAGE not set in .env"; \
+			echo "  Using default: /opt/monitoring/postgres-data"; \
+			if [ ! -d "/opt/monitoring/postgres-data" ]; then \
+				sudo mkdir -p /opt/monitoring/postgres-data || mkdir -p /opt/monitoring/postgres-data || exit 1; \
+				sudo chown -R 999:999 /opt/monitoring/postgres-data 2>/dev/null || chown -R 999:999 /opt/monitoring/postgres-data 2>/dev/null || true; \
+			fi; \
 		fi; \
+	else \
+		echo "  ⚠️  .env file not found, cannot create database directory"; \
 	fi
 	@echo ""
 	@echo "Setup complete! .env file found."
@@ -61,6 +84,22 @@ start:
 		echo "ERROR: prometheus.yml not found!"; \
 		echo "Run 'make setup' from project root to generate configs."; \
 		exit 1; \
+	fi
+	@echo "Ensuring database directory exists..."
+	@if [ -f .env ]; then \
+		. ./.env && \
+		if [ -n "$$MONITORING_DB_STORAGE" ]; then \
+			if [ ! -d "$$MONITORING_DB_STORAGE" ]; then \
+				echo "  Creating: $$MONITORING_DB_STORAGE"; \
+				sudo mkdir -p "$$MONITORING_DB_STORAGE" 2>/dev/null || mkdir -p "$$MONITORING_DB_STORAGE" || { \
+					echo "  ❌ ERROR: Failed to create directory!"; \
+					echo "  Please run: sudo mkdir -p $$MONITORING_DB_STORAGE"; \
+					exit 1; \
+				}; \
+				sudo chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null || \
+					chown -R 999:999 "$$MONITORING_DB_STORAGE" 2>/dev/null || true; \
+			fi; \
+		fi; \
 	fi
 	@echo "Starting Monitoring services..."
 	docker compose up -d
