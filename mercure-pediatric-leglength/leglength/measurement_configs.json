@@ -35,6 +35,18 @@
             "join_points": ["PLL_L_KNC", 8],
             "meaning": "Left tibia length measurement",
             "distance_type": "vertical"
+        },
+        {
+            "name": "PLL_R_LGL",
+            "join_points": [1, 4],
+            "meaning": "Right total lower extremity length measurement",
+            "distance_type": "vertical"
+        },
+        {
+            "name": "PLL_L_LGL",
+            "join_points": [5, 8],
+            "meaning": "Left total lower extremity length measurement",
+            "distance_type": "vertical"
         }
     ]
 }

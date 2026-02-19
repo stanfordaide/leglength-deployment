@@ -278,6 +278,24 @@ class DicomProcessor:
         
         return new_ds
 
+    def _get_scale_factor(self, image: np.ndarray, reference_size: int = 1024) -> float:
+        """Calculate scale factor based on image dimensions.
+        
+        Args:
+            image: Image array (h, w) or (h, w, c)
+            reference_size: Reference size for scaling (default 1024)
+            
+        Returns:
+            Scale factor to apply to all visualization elements
+        """
+        h, w = image.shape[:2]
+        # Use average dimension for more balanced scaling
+        avg_dim = (h + w) / 2.0
+        scale_factor = avg_dim / reference_size
+        # Clamp scale factor to reasonable bounds (0.5x to 3x)
+        scale_factor = max(0.5, min(3.0, scale_factor))
+        return scale_factor
+
     def _create_visualization_image(self, results: dict, dicom_path: str) -> np.ndarray:
         """Create the visualization image with measurements and annotations."""
         self.logger.info("=== Starting visualization creation ===")
@@ -311,16 +329,18 @@ class DicomProcessor:
             visualization[:,:,0] = (visualization[:,:,0] * 0.95).astype(np.uint8)  # Reduce red
             visualization[:,:,1] = (visualization[:,:,1] * 0.98).astype(np.uint8)  # Slightly reduce green
         
+        # Calculate scale factor based on image dimensions
+        scale = self._get_scale_factor(visualization)
 
         
         # Draw all 8 keypoints first
-        self._draw_all_keypoints(visualization, results)
+        self._draw_all_keypoints(visualization, results, scale)
         
         # Add professional legend for keypoint symbols
-        self._add_keypoint_legend(visualization)
+        self._add_keypoint_legend(visualization, scale)
         
-        # Add medical imaging overlay with patient info if available
-        self._add_medical_overlay(visualization, dcm)
+        ## Add medical imaging overlay with patient info if available
+        # self._add_medical_overlay(visualization, dcm)
         
         measurements_processed = 0
         
@@ -346,12 +366,12 @@ class DicomProcessor:
                     p1 = (max(0, min(w-1, p1[0])), max(0, min(h-1, p1[1])))
                     p2 = (max(0, min(w-1, p2[0])), max(0, min(h-1, p2[1])))
                 # Draw professional measurement line with gradient effect
-                self._draw_measurement_line(visualization, p1, p2, name)
+                self._draw_measurement_line(visualization, p1, p2, name, scale)
 
                 # Draw professional measurement points with uncertainty-based styling
                 for i, (point, point_id) in enumerate(zip([p1, p2], join_points)):
                     uncertainty = self._get_point_uncertainty(point_id, results)
-                    self._draw_measurement_point(visualization, point, uncertainty, i == 0)
+                    self._draw_measurement_point(visualization, point, uncertainty, i == 0, scale)
 
                 # Add professional measurement label with callout
                 mid_point = (
@@ -361,7 +381,7 @@ class DicomProcessor:
                 distance_cm = results['measurements'][name]['centimeters']
                 
                 # Create professional measurement label
-                self._draw_measurement_label(visualization, mid_point, distance_cm, name, uncertainty)
+                self._draw_measurement_label(visualization, mid_point, distance_cm, name, uncertainty, scale)
                 
                 measurements_processed += 1
                 
@@ -392,21 +412,23 @@ class DicomProcessor:
             visualization = cv2.cvtColor(visualization, cv2.COLOR_RGBA2RGB)
         
         # Add professional watermark
-        self._add_stanford_watermark(visualization)
+        self._add_stanford_watermark(visualization, scale)
         
         return visualization
 
-    def _draw_measurement_line(self, visualization: np.ndarray, p1: tuple, p2: tuple, measurement_name: str):
+    def _draw_measurement_line(self, visualization: np.ndarray, p1: tuple, p2: tuple, measurement_name: str, scale: float = 1.0):
         """Draw professional measurement line with gradient effect."""
         # Draw professional measurement line with medical imaging standards
-        # Main measurement line in cyan for high contrast against X-ray backgrounds
-        accent_color = (255, 255, 0)  # Cyan in BGR format
-        cv2.line(visualization, p1, p2, accent_color, 3)  # Consistent 3px thickness
+        # Main measurement line in bright green for high contrast against X-ray backgrounds
+        # Using (0, 255, 0) which is the same in both BGR and RGB for consistency across viewers
+        accent_color = (0, 255, 0)  # Bright green - consistent in BGR and RGB
+        line_thickness = max(1, int(3 * scale))
+        cv2.line(visualization, p1, p2, accent_color, line_thickness)
         
         # Add measurement arrows/caps at endpoints
-        self._draw_measurement_caps(visualization, p1, p2)
+        self._draw_measurement_caps(visualization, p1, p2, scale)
 
-    def _draw_measurement_caps(self, visualization: np.ndarray, p1: tuple, p2: tuple):
+    def _draw_measurement_caps(self, visualization: np.ndarray, p1: tuple, p2: tuple, scale: float = 1.0):
         """Draw professional measurement endpoint caps."""
         # Calculate perpendicular direction for caps
         dx = p2[0] - p1[0]
@@ -418,26 +440,35 @@ class DicomProcessor:
             nx = -dy / length
             ny = dx / length
             
-            cap_length = 12
-            # Draw caps at both ends
+            cap_length = int(12 * scale)
+            cap_thickness = max(1, int(2 * scale))
+            # Draw caps at both ends - using bright green for consistency
+            cap_color = (0, 255, 0)  # Bright green - consistent in BGR and RGB
             for point in [p1, p2]:
                 cap_p1 = (int(point[0] + nx * cap_length), int(point[1] + ny * cap_length))
                 cap_p2 = (int(point[0] - nx * cap_length), int(point[1] - ny * cap_length))
-                cv2.line(visualization, cap_p1, cap_p2, (255, 255, 0), 2)  # Cyan caps with 2px thickness
+                cv2.line(visualization, cap_p1, cap_p2, cap_color, cap_thickness)
 
-    def _draw_measurement_point(self, visualization: np.ndarray, point: tuple, uncertainty: float, is_start: bool):
+    def _draw_measurement_point(self, visualization: np.ndarray, point: tuple, uncertainty: float, is_start: bool, scale: float = 1.0):
         """Draw professional measurement endpoint with uncertainty indication."""
         color = self._get_uncertainty_color(uncertainty)
         
         # Draw measurement endpoint with professional medical imaging style
-        # Use larger cyan hollow circle for measurement endpoints
-        cv2.circle(visualization, point, 8, (255, 255, 0), 2)  # Larger cyan hollow circle
-        # Add crosshair for exact position
-        cv2.line(visualization, (point[0]-4, point[1]), (point[0]+4, point[1]), (255, 255, 255), 1)
-        cv2.line(visualization, (point[0], point[1]-4), (point[0], point[1]+4), (255, 255, 255), 1)
+        # Scale circle radius and crosshair size
+        circle_radius = int(8 * scale)
+        circle_thickness = max(1, int(2 * scale))
+        crosshair_size = int(4 * scale)
+        crosshair_thickness = max(1, int(1 * scale))
+        
+        # Use bright green for measurement points - consistent in BGR and RGB
+        point_color = (0, 255, 0)  # Bright green
+        cv2.circle(visualization, point, circle_radius, point_color, circle_thickness)
+        # Add crosshair for exact position - white for visibility
+        cv2.line(visualization, (point[0]-crosshair_size, point[1]), (point[0]+crosshair_size, point[1]), (255, 255, 255), crosshair_thickness)
+        cv2.line(visualization, (point[0], point[1]-crosshair_size), (point[0], point[1]+crosshair_size), (255, 255, 255), crosshair_thickness)
 
     def _draw_measurement_label(self, visualization: np.ndarray, mid_point: tuple, distance_cm: float, 
-                               measurement_name: str, uncertainty: float):
+                               measurement_name: str, uncertainty: float, scale: float = 1.0):
         """Draw professional measurement label with callout."""
         h, w = visualization.shape[:2]
         
@@ -446,76 +477,85 @@ class DicomProcessor:
         # Remove anatomical labels per medical imaging standards
         sub_label = ""  # No sub-label needed
         
-        # Professional font settings - LARGER for visibility on PACS
+        # Professional font settings - scale with image size
         main_font = cv2.FONT_HERSHEY_DUPLEX
         sub_font = cv2.FONT_HERSHEY_SIMPLEX
-        main_scale = 1.8  # Increased from 1.2 for better visibility
-        sub_scale = 0.8
-        main_thickness = 3  # Thicker for readability
-        sub_thickness = 1
+        main_scale = 1.8 * scale  # Scale font size
+        sub_scale = 0.8 * scale
+        main_thickness = max(1, int(3 * scale))  # Scale thickness
+        sub_thickness = max(1, int(1 * scale))
         
         # Get text dimensions - only for main label
         (main_w, main_h), _ = cv2.getTextSize(main_label, main_font, main_scale, main_thickness)
         
-        # Calculate label box dimensions - larger for better visibility
-        box_width = main_w + 40   # More padding for larger text
-        box_height = main_h + 20  # More vertical padding
+        # Calculate label box dimensions - scale padding
+        padding_h = int(40 * scale)
+        padding_v = int(20 * scale)
+        box_width = main_w + padding_h
+        box_height = main_h + padding_v
         
-        # Position label box (offset from measurement line) - more offset for larger labels
-        label_x = max(10, min(w - box_width - 10, mid_point[0] - box_width//2))
-        label_y = max(box_height + 10, min(h - 10, mid_point[1] - 80))  # More offset for larger box
+        # Position label box (offset from measurement line) - scale offset
+        offset_x = int(10 * scale)
+        offset_y = int(80 * scale)
+        label_x = max(offset_x, min(w - box_width - offset_x, mid_point[0] - box_width//2))
+        label_y = max(box_height + offset_x, min(h - offset_x, mid_point[1] - offset_y))
         
-        # Draw professional label background - larger for bigger text
+        # Draw professional label background - scale border padding
+        border_pad = int(15 * scale)
         overlay = visualization.copy()
         cv2.rectangle(overlay, 
-                     (label_x - 15, label_y - box_height - 10), 
-                     (label_x + box_width + 10, label_y + 10), 
+                     (label_x - border_pad, label_y - box_height - offset_x), 
+                     (label_x + box_width + offset_x, label_y + offset_x), 
                      (0, 0, 0), -1)  # Black background
         
         # Apply transparency
         alpha = 0.8
         cv2.addWeighted(overlay, alpha, visualization, 1 - alpha, 0, visualization)
         
-        # Add border with uncertainty color - matching larger box
+        # Add border with uncertainty color - scale border thickness
         border_color = self._get_uncertainty_color(uncertainty)
+        border_thickness = max(1, int(3 * scale))
         cv2.rectangle(visualization, 
-                     (label_x - 15, label_y - box_height - 10), 
-                     (label_x + box_width + 10, label_y + 10), 
-                     border_color, 3)  # Thicker border for visibility
+                     (label_x - border_pad, label_y - box_height - offset_x), 
+                     (label_x + box_width + offset_x, label_y + offset_x), 
+                     border_color, border_thickness)
         
-        # Draw callout line to measurement in cyan
+        # Draw callout line to measurement in bright green - scale thickness
+        callout_thickness = max(1, int(2 * scale))
+        callout_color = (0, 255, 0)  # Bright green - consistent in BGR and RGB
         cv2.line(visualization, (mid_point[0], mid_point[1]), 
-                (label_x + box_width//2, label_y), (255, 255, 0), 2)  # Cyan callout line
+                (label_x + box_width//2, label_y), callout_color, callout_thickness)
         
-        # Draw text - only measurement value in white - centered in larger box
-        text_x = label_x + 20  # More padding for larger box
-        cv2.putText(visualization, main_label, (text_x, label_y - 8), 
+        # Draw text - only measurement value in white - scale text offset
+        text_x = label_x + int(20 * scale)
+        text_y_offset = int(8 * scale)
+        cv2.putText(visualization, main_label, (text_x, label_y - text_y_offset), 
                    main_font, main_scale, (255, 255, 255), main_thickness, cv2.LINE_AA)
 
     def _draw_professional_label(self, visualization: np.ndarray, center_x: int, center_y: int, 
-                                point_name: str, was_detected: bool):
+                                point_name: str, was_detected: bool, scale: float = 1.0):
         """Draw professional point label with callout."""
         h, w = visualization.shape[:2]
         
-        # Professional label styling
+        # Professional label styling - scale font
         font = cv2.FONT_HERSHEY_DUPLEX
-        font_scale = 0.5
-        font_thickness = 1
+        font_scale = 0.5 * scale
+        font_thickness = max(1, int(1 * scale))
         
         # Get text dimensions
         (text_width, text_height), _ = cv2.getTextSize(point_name, font, font_scale, font_thickness)
         
-        # Smart label positioning to avoid overlap
-        offset_distance = 25
+        # Smart label positioning to avoid overlap - scale offset
+        offset_distance = int(25 * scale)
         label_x = center_x + offset_distance
         label_y = center_y - offset_distance
         
         # Clamp to image bounds
         label_x = max(text_width//2, min(w - text_width//2, label_x))
-        label_y = max(text_height + 5, min(h - 5, label_y))
+        label_y = max(text_height + int(5 * scale), min(h - int(5 * scale), label_y))
         
-        # Create label background
-        padding = 4
+        # Create label background - scale padding
+        padding = int(4 * scale)
         bg_x1 = label_x - text_width//2 - padding
         bg_y1 = label_y - text_height - padding
         bg_x2 = label_x + text_width//2 + padding  
@@ -529,15 +569,17 @@ class DicomProcessor:
         alpha = 0.7
         cv2.addWeighted(overlay, alpha, visualization, 1 - alpha, 0, visualization)
         
-        # Draw border
-        cv2.rectangle(visualization, (bg_x1, bg_y1), (bg_x2, bg_y2), (255, 255, 255), 1)
+        # Draw border - scale thickness
+        border_thickness = max(1, int(1 * scale))
+        cv2.rectangle(visualization, (bg_x1, bg_y1), (bg_x2, bg_y2), (255, 255, 255), border_thickness)
         
-        # Draw callout line
+        # Draw callout line - scale thickness
         cv2.line(visualization, (center_x, center_y), 
-                (label_x, label_y - text_height//2), (255, 255, 255), 1)
+                (label_x, label_y - text_height//2), (255, 255, 255), border_thickness)
         
-        # Draw text
-        cv2.putText(visualization, point_name, (label_x - text_width//2, label_y - 2), 
+        # Draw text - scale offset
+        text_offset = int(2 * scale)
+        cv2.putText(visualization, point_name, (label_x - text_width//2, label_y - text_offset), 
                    font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
     def _add_medical_overlay(self, visualization: np.ndarray, dcm: pydicom.Dataset):
@@ -580,20 +622,21 @@ class DicomProcessor:
                 cv2.putText(visualization, info, (overlay_x, overlay_y - 40 + i * 20), 
                            font, font_scale, (200, 200, 200), 1, cv2.LINE_AA)
 
-    def _add_stanford_watermark(self, visualization: np.ndarray):
+    def _add_stanford_watermark(self, visualization: np.ndarray, scale: float = 1.0):
         """Add Stanford AIDE watermark."""
         h, w = visualization.shape[:2]
         
-        # Position watermark in bottom-right
+        # Position watermark in bottom-right - scale font and offsets
         watermark_text = "Stanford AIDE"
         font = cv2.FONT_HERSHEY_DUPLEX
-        font_scale = 0.6
-        font_thickness = 1
+        font_scale = 0.6 * scale
+        font_thickness = max(1, int(1 * scale))
         
         (text_width, text_height), _ = cv2.getTextSize(watermark_text, font, font_scale, font_thickness)
         
-        x = w - text_width - 20
-        y = h - 20
+        offset = int(20 * scale)
+        x = w - text_width - offset
+        y = h - offset
         
         # Draw watermark with transparency
         overlay = visualization.copy()
@@ -846,7 +889,7 @@ class DicomProcessor:
         
         return new_ds
 
-    def _draw_all_keypoints(self, visualization: np.ndarray, results: dict):
+    def _draw_all_keypoints(self, visualization: np.ndarray, results: dict, scale: float = 1.0):
         """Draw all 8 keypoints on the visualization, marking derived points with X."""
         # Define keypoint names and labels with anatomical accuracy
         keypoint_names = {
@@ -861,8 +904,9 @@ class DicomProcessor:
         }
         
         # Define professional medical imaging color scheme
-        detected_color = (255, 255, 0)    # Cyan for detected points (BGR format)
-        derived_color = (0, 0, 255)       # RED for derived/interpolated points (BGR format)
+        # Using colors that are consistent in both BGR and RGB for cross-viewer compatibility
+        detected_color = (0, 255, 0)      # Bright green for detected points - consistent in BGR and RGB
+        derived_color = (0, 0, 255)       # Red for derived/interpolated points (same in BGR and RGB)
         text_bg_color = (0, 0, 0, 180)    # Semi-transparent black background
         
         # Get individual model predictions to see which points were actually detected
@@ -882,6 +926,11 @@ class DicomProcessor:
         # Get fused results to see final point positions
         fused_boxes = results.get('boxes', [])
         fused_labels = results.get('labels', [])
+        
+        # Scale keypoint drawing elements
+        circle_radius = int(12 * scale)
+        circle_thickness = max(1, int(2 * scale))
+        crosshair_thickness = max(1, int(1 * scale))
         
         # Draw all 8 keypoints
         for point_id in range(1, 9):
@@ -907,36 +956,36 @@ class DicomProcessor:
                 # Determine if this point was directly detected or derived
                 was_detected = point_id in detected_points
                 
-                if was_detected:
-                    # Draw single hollow circle for AI-predicted landmarks
-                    cv2.circle(visualization, (center_x, center_y), 12, detected_color, 2)  # Hollow circle
-                    # Add crosshair that ends at circle border
-                    cv2.line(visualization, (center_x-12, center_y), (center_x+12, center_y), detected_color, 1)
-                    cv2.line(visualization, (center_x, center_y-12), (center_x, center_y+12), detected_color, 1)
-                else:
-                    # Draw single hollow circle for manual/interpolated landmarks
-                    cv2.circle(visualization, (center_x, center_y), 12, derived_color, 2)  # Hollow circle
-                    # Add crosshair that ends at circle border
-                    cv2.line(visualization, (center_x-12, center_y), (center_x+12, center_y), derived_color, 1)
-                    cv2.line(visualization, (center_x, center_y-12), (center_x, center_y+12), derived_color, 1)
+                color = detected_color if was_detected else derived_color
+                
+                # Draw single hollow circle for landmarks
+                cv2.circle(visualization, (center_x, center_y), circle_radius, color, circle_thickness)
+                # Add crosshair that ends at circle border
+                cv2.line(visualization, (center_x-circle_radius, center_y), (center_x+circle_radius, center_y), color, crosshair_thickness)
+                cv2.line(visualization, (center_x, center_y-circle_radius), (center_x, center_y+circle_radius), color, crosshair_thickness)
                 
                 # Remove anatomical joint labels per medical imaging standards
-                # self._draw_professional_label(visualization, center_x, center_y, point_name, was_detected)
+                # self._draw_professional_label(visualization, center_x, center_y, point_name, was_detected, scale)
 
-    def _add_keypoint_legend(self, visualization: np.ndarray):
+    def _add_keypoint_legend(self, visualization: np.ndarray, scale: float = 1.0):
         """Add professional legend explaining keypoint symbols."""
         h, w = visualization.shape[:2]
         
-        # Professional legend positioning (top-left to avoid interference)
-        legend_x = 20
-        legend_y = 20
-        legend_width = 220
-        legend_height = 90
+        # Professional legend positioning (top-left to avoid interference) - scale all dimensions
+        legend_x = int(20 * scale)
+        legend_y = int(20 * scale)
+        legend_width = int(220 * scale)
+        legend_height = int(90 * scale)
+        
+        # Scale padding and border
+        pad_x = int(10 * scale)
+        pad_y = int(5 * scale)
+        border_thickness = max(1, int(2 * scale))
         
         # Create professional legend background with subtle gradient
         overlay = visualization.copy()
         cv2.rectangle(overlay, 
-                     (legend_x - 10, legend_y - 5), 
+                     (legend_x - pad_x, legend_y - pad_y), 
                      (legend_x + legend_width, legend_y + legend_height), 
                      (40, 40, 40), -1)  # Dark gray background
         
@@ -946,39 +995,50 @@ class DicomProcessor:
         
         # Add border
         cv2.rectangle(visualization, 
-                     (legend_x - 10, legend_y - 5), 
+                     (legend_x - pad_x, legend_y - pad_y), 
                      (legend_x + legend_width, legend_y + legend_height), 
-                     (200, 200, 200), 2)  # Light border
+                     (200, 200, 200), border_thickness)
         
-        # Professional typography
+        # Professional typography - scale font sizes
         title_font = cv2.FONT_HERSHEY_DUPLEX
         label_font = cv2.FONT_HERSHEY_SIMPLEX
-        title_scale = 0.7
-        label_scale = 0.5
+        title_scale = 0.7 * scale
+        label_scale = 0.5 * scale
+        title_thickness = max(1, int(2 * scale))
+        label_thickness = max(1, int(1 * scale))
         
-        # Legend title
-        cv2.putText(visualization, "ANATOMICAL LANDMARKS", (legend_x, legend_y + 20), 
-                   title_font, title_scale, (255, 255, 255), 2, cv2.LINE_AA)
+        # Legend title - scale offset
+        title_y_offset = int(20 * scale)
+        cv2.putText(visualization, "ANATOMICAL LANDMARKS", (legend_x, legend_y + title_y_offset), 
+                   title_font, title_scale, (255, 255, 255), title_thickness, cv2.LINE_AA)
         
-        # Detected point symbol and label
-        symbol_y = legend_y + 45
-        detected_color = (255, 255, 0)  # Cyan
-        cv2.circle(visualization, (legend_x + 15, symbol_y), 12, detected_color, 2)
+        # Detected point symbol and label - scale positions
+        symbol_x = legend_x + int(15 * scale)
+        symbol_y = legend_y + int(45 * scale)
+        detected_color = (0, 255, 0)  # Bright green - consistent in BGR and RGB
+        circle_radius = int(12 * scale)
+        circle_thickness = max(1, int(2 * scale))
+        crosshair_thickness = max(1, int(1 * scale))
+        
+        cv2.circle(visualization, (symbol_x, symbol_y), circle_radius, detected_color, circle_thickness)
         # Add crosshair that ends at circle border
-        cv2.line(visualization, (legend_x + 3, symbol_y), (legend_x + 27, symbol_y), detected_color, 1)
-        cv2.line(visualization, (legend_x + 15, symbol_y-12), (legend_x + 15, symbol_y+12), detected_color, 1)
-        cv2.putText(visualization, "AI Detected", (legend_x + 35, symbol_y + 5), 
-                   label_font, label_scale, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.line(visualization, (symbol_x - circle_radius, symbol_y), (symbol_x + circle_radius, symbol_y), detected_color, crosshair_thickness)
+        cv2.line(visualization, (symbol_x, symbol_y - circle_radius), (symbol_x, symbol_y + circle_radius), detected_color, crosshair_thickness)
+        text_x = legend_x + int(35 * scale)
+        text_y = symbol_y + int(5 * scale)
+        cv2.putText(visualization, "AI Detected", (text_x, text_y), 
+                   label_font, label_scale, (255, 255, 255), label_thickness, cv2.LINE_AA)
         
-        # Derived point symbol and label  
-        symbol_y = legend_y + 70
+        # Derived point symbol and label - scale positions
+        symbol_y = legend_y + int(70 * scale)
         derived_color = (0, 0, 255)  # RED for derived/interpolated
-        cv2.circle(visualization, (legend_x + 15, symbol_y), 12, derived_color, 2)
+        cv2.circle(visualization, (symbol_x, symbol_y), circle_radius, derived_color, circle_thickness)
         # Add crosshair that ends at circle border
-        cv2.line(visualization, (legend_x + 3, symbol_y), (legend_x + 27, symbol_y), derived_color, 1)
-        cv2.line(visualization, (legend_x + 15, symbol_y-12), (legend_x + 15, symbol_y+12), derived_color, 1)
-        cv2.putText(visualization, "Interpolated", (legend_x + 35, symbol_y + 5), 
-                   label_font, label_scale, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.line(visualization, (symbol_x - circle_radius, symbol_y), (symbol_x + circle_radius, symbol_y), derived_color, crosshair_thickness)
+        cv2.line(visualization, (symbol_x, symbol_y - circle_radius), (symbol_x, symbol_y + circle_radius), derived_color, crosshair_thickness)
+        text_y = symbol_y + int(5 * scale)
+        cv2.putText(visualization, "Interpolated", (text_x, text_y), 
+                   label_font, label_scale, (255, 255, 255), label_thickness, cv2.LINE_AA)
 
     def _create_model_coverage_table(self, results: dict, models: List[str]) -> np.ndarray:
         """Create Table 1: Model Coverage table showing which models produced output for each point."""
@@ -1419,31 +1479,6 @@ class DicomProcessor:
         
         combined = final_image
         
-        # Add image-level metrics with explainers at the bottom
-        image_metrics = results.get('image_metrics', {})
-        if image_metrics:
-            # Generate concise explainers
-            explainers = self._generate_metric_explainers(results)
-            
-            # Create metrics text with explainers
-            metrics_lines = [
-                f"Image Metrics - DDS: {image_metrics.get('image_dds', 0):.3f}, LDS: {image_metrics.get('image_lds', 0):.3f}, ORS: {image_metrics.get('image_ors', 0):.3f}, CDS: {image_metrics.get('image_cds', 0):.3f}"
-            ]
-            metrics_lines.extend(explainers)
-            
-            # Add white space at bottom for metrics (more space for explainers)
-            metrics_height = 30 + (len(explainers) * 25)
-            white_bar = np.ones((metrics_height, combined.shape[1], 3), dtype=np.uint8) * 255
-            combined = np.vstack([combined, white_bar])
-            
-            # Add metrics text
-            y_offset = combined.shape[0] - metrics_height + 20
-            for i, line in enumerate(metrics_lines):
-                font_size = 0.8 if i == 0 else 0.6  # Smaller font for explainers
-                thickness = 2 if i == 0 else 1
-                cv2.putText(combined, line, (20, y_offset + (i * 25)), 
-                           cv2.FONT_HERSHEY_SIMPLEX, font_size, (0, 0, 0), thickness, cv2.LINE_AA)
-        
         # Add legend at the bottom with actual model names
         legend_height = 40
         legend_bar = np.ones((legend_height, combined.shape[1], 3), dtype=np.uint8) * 240
@@ -1458,47 +1493,13 @@ class DicomProcessor:
         return combined
 
     def _generate_metric_explainers(self, results: dict) -> List[str]:
-        """Generate concise explainers for image-level metrics."""
-        explainers = []
+        """Generate concise explainers for image-level metrics.
         
-        # DDS explainer - which points had detection failures
-        point_stats = results.get('point_statistics', {})
-        failed_points = []
-        total_failures = 0
-        
-        for point_id, stats in point_stats.items():
-            if stats.get('detection_disagreement', 0) > 0:
-                models_detected = stats.get('num_models_detected', 0)
-                total_models = 3  # Assuming 3 models
-                failures = total_models - models_detected
-                failed_points.append(f"P{point_id}")
-                total_failures += failures
-        
-        if failed_points:
-            explainers.append(f"DDS: {len(failed_points)} points with failures ({', '.join(failed_points[:3])}{'...' if len(failed_points) > 3 else ''})")
-        
-        # LDS explainer - which points have localization disagreement
-        problem_points_lds = []
-        for point_id, stats in point_stats.items():
-            if stats.get('localization_disagreement', 0) > 0:
-                problem_points_lds.append(f"P{point_id}")
-        
-        if problem_points_lds:
-            explainers.append(f"LDS: {len(problem_points_lds)} points >threshold ({', '.join(problem_points_lds[:3])}{'...' if len(problem_points_lds) > 3 else ''})")
-        
-        # ORS explainer - which points have outlier risk
-        problem_points_ors = []
-        for point_id, stats in point_stats.items():
-            if stats.get('outlier_risk', 0) > 0:
-                problem_points_ors.append(f"P{point_id}")
-        
-        if problem_points_ors:
-            explainers.append(f"ORS: {len(problem_points_ors)} points with outliers ({', '.join(problem_points_ors[:3])}{'...' if len(problem_points_ors) > 3 else ''})")
-        elif not failed_points and not problem_points_lds:
-            # Only show "no issues" if there are actually no issues at all
-            explainers.append("No significant disagreement detected")
-        
-        return explainers
+        NOTE: This method is kept for potential future use but is currently not called
+        after removing metrics display per user request.
+        """
+        # Method kept for backward compatibility but returns empty list
+        return []
 
     def _add_professional_header(self, image: np.ndarray, results: dict):
         """Add professional medical report header."""
@@ -1559,23 +1560,7 @@ class DicomProcessor:
         cv2.line(image, (40, footer_y + 5), (w - 40, footer_y + 5), 
                 (30, 60, 120), 3)
         
-        # Add metrics section with larger, more readable text
-        image_metrics = results.get('image_metrics', {})
-        if image_metrics:
-            metrics_text = (f"UNCERTAINTY METRICS: "
-                          f"DDS={image_metrics.get('image_dds', 0):.3f} | "
-                          f"LDS={image_metrics.get('image_lds', 0):.3f} | "
-                          f"ORS={image_metrics.get('image_ors', 0):.3f} | "
-                          f"CDS={image_metrics.get('image_cds', 0):.3f}")
-            
-            cv2.putText(image, metrics_text, (40, footer_y + 30), 
-                       cv2.FONT_HERSHEY_DUPLEX, 0.8, (30, 60, 120), 2, cv2.LINE_AA)
-            
-            # Add explainers with larger text
-            explainers = self._generate_metric_explainers(results)
-            for i, explainer in enumerate(explainers[:2]):  # Limit to 2 lines
-                cv2.putText(image, explainer, (40, footer_y + 55 + i * 22), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (80, 80, 80), 2, cv2.LINE_AA)
+        # Metrics section removed per user request
         
         # Add model legend with larger text - REMOVED (hardcoded, now shown dynamically in main legend)
 
