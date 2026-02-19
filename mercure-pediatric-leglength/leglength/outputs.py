@@ -591,8 +591,8 @@ class DicomProcessor:
         alpha = 0.8
         cv2.addWeighted(overlay, alpha, visualization, 1 - alpha, 0, visualization)
         
-        # Add border with uncertainty color - scale border thickness
-        border_color = self._get_uncertainty_color(uncertainty)
+        # Add border with fixed color - scale border thickness
+        border_color = (0, 255, 0)  # Always bright green - consistent in BGR and RGB
         border_thickness = max(1, int(3 * scale))
         cv2.rectangle(visualization, 
                      (label_x - border_pad, label_y - box_height - offset_x), 
@@ -984,23 +984,10 @@ class DicomProcessor:
         
         # Define professional medical imaging color scheme
         # Using colors that are consistent in both BGR and RGB for cross-viewer compatibility
-        detected_color = (0, 255, 0)      # Bright green for detected points - consistent in BGR and RGB
-        derived_color = (0, 0, 255)       # Red for derived/interpolated points (same in BGR and RGB)
-        text_bg_color = (0, 0, 0, 180)    # Semi-transparent black background
+        keypoint_color = (0, 255, 0)  # Bright green for all keypoints - consistent in BGR and RGB
         
-        # Get individual model predictions to see which points were actually detected
+        # Get individual model predictions for drawing tiny dots
         individual_predictions = results.get('individual_model_predictions', {})
-        detected_points = set()
-        
-        # Find which points were detected by at least one model
-        for model_name, model_data in individual_predictions.items():
-            predictions = model_data.get('predictions', {})
-            labels = predictions.get('labels', [])
-            boxes = predictions.get('boxes', [])
-            
-            for i, label in enumerate(labels):
-                if i < len(boxes) and 1 <= label <= 8:
-                    detected_points.add(label)
         
         # Get fused results to see final point positions
         fused_boxes = results.get('boxes', [])
@@ -1010,6 +997,9 @@ class DicomProcessor:
         circle_radius = int(12 * scale)
         circle_thickness = max(1, int(2 * scale))
         crosshair_thickness = max(1, int(1 * scale))
+        
+        # Tiny dot size for individual model predictions (only visible when zoomed)
+        dot_radius = max(1, int(1 * scale))  # Very small, scales with image
         
         # Draw all 8 keypoints
         for point_id in range(1, 9):
@@ -1032,16 +1022,33 @@ class DicomProcessor:
                 center_x = max(0, min(w-1, center_x))
                 center_y = max(0, min(h-1, center_y))
                 
-                # Determine if this point was directly detected or derived
-                was_detected = point_id in detected_points
+                # Draw tiny white dots for individual model predictions at this landmark
+                for model_name, model_data in individual_predictions.items():
+                    predictions = model_data.get('predictions', {})
+                    labels = predictions.get('labels', [])
+                    boxes = predictions.get('boxes', [])
+                    
+                    # Find this point in this model's predictions
+                    for i, label in enumerate(labels):
+                        if label == point_id and i < len(boxes):
+                            box = boxes[i]
+                            # Calculate center of this model's prediction
+                            model_x = int((box[0] + box[2]) / 2)
+                            model_y = int((box[1] + box[3]) / 2)
+                            
+                            # Clamp to image bounds
+                            model_x = max(0, min(w-1, model_x))
+                            model_y = max(0, min(h-1, model_y))
+                            
+                            # Draw tiny white dot (filled circle)
+                            cv2.circle(visualization, (model_x, model_y), dot_radius, (255, 255, 255), -1)
+                            break
                 
-                color = detected_color if was_detected else derived_color
-                
-                # Draw single hollow circle for landmarks
-                cv2.circle(visualization, (center_x, center_y), circle_radius, color, circle_thickness)
+                # Draw single hollow circle for fused landmark (same color for all)
+                cv2.circle(visualization, (center_x, center_y), circle_radius, keypoint_color, circle_thickness)
                 # Add crosshair that ends at circle border
-                cv2.line(visualization, (center_x-circle_radius, center_y), (center_x+circle_radius, center_y), color, crosshair_thickness)
-                cv2.line(visualization, (center_x, center_y-circle_radius), (center_x, center_y+circle_radius), color, crosshair_thickness)
+                cv2.line(visualization, (center_x-circle_radius, center_y), (center_x+circle_radius, center_y), keypoint_color, crosshair_thickness)
+                cv2.line(visualization, (center_x, center_y-circle_radius), (center_x, center_y+circle_radius), keypoint_color, crosshair_thickness)
                 
                 # Remove anatomical joint labels per medical imaging standards
                 # self._draw_professional_label(visualization, center_x, center_y, point_name, was_detected, scale)
