@@ -425,7 +425,7 @@ class DicomProcessor:
         return visualization
 
     def _add_total_lengths_text(self, visualization: np.ndarray, total_lengths: dict, scale: float = 1.0):
-        """Add text at the bottom showing total leg lengths."""
+        """Add text at the bottom showing total leg lengths on separate lines."""
         h, w = visualization.shape[:2]
         
         # Get total lengths
@@ -435,43 +435,65 @@ class DicomProcessor:
         if right_total is None and left_total is None:
             return  # No total lengths to display
         
-        # Build text string
-        text_parts = []
+        # Build text lines (separate lines for each)
+        text_lines = []
         if right_total is not None:
-            text_parts.append(f"Right Total Leg Length = {right_total:.1f} cm")
+            text_lines.append(f"Right Total Leg Length = {right_total:.1f} cm")
         if left_total is not None:
-            text_parts.append(f"Left Total Leg Length = {left_total:.1f} cm")
+            text_lines.append(f"Left Total Leg Length = {left_total:.1f} cm")
         
-        text = ", ".join(text_parts)
+        if not text_lines:
+            return
         
         # Scale font
         font = cv2.FONT_HERSHEY_DUPLEX
         font_scale = 1.0 * scale
         font_thickness = max(1, int(2 * scale))
         
-        # Get text size
-        (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, font_thickness)
+        # Calculate dimensions for all lines
+        line_heights = []
+        line_widths = []
+        line_spacing = int(5 * scale)
+        
+        for line in text_lines:
+            (text_width, text_height), baseline = cv2.getTextSize(line, font, font_scale, font_thickness)
+            line_widths.append(text_width)
+            line_heights.append(text_height + baseline)
+        
+        # Total height needed
+        total_height = sum(line_heights) + (len(text_lines) - 1) * line_spacing
+        max_width = max(line_widths)
         
         # Position at bottom center with padding
         padding = int(20 * scale)
-        text_x = (w - text_width) // 2
-        text_y = h - padding
+        bg_padding = int(10 * scale)
+        
+        # Calculate background rectangle
+        bg_x1 = (w - max_width) // 2 - bg_padding
+        bg_y1 = h - total_height - padding - bg_padding
+        bg_x2 = (w + max_width) // 2 + bg_padding
+        bg_y2 = h - padding + bg_padding
         
         # Draw background rectangle for better visibility
-        bg_padding = int(10 * scale)
         overlay = visualization.copy()
-        cv2.rectangle(overlay,
-                     (text_x - bg_padding, text_y - text_height - bg_padding),
-                     (text_x + text_width + bg_padding, text_y + baseline + bg_padding),
-                     (0, 0, 0), -1)  # Black background
+        cv2.rectangle(overlay, (bg_x1, bg_y1), (bg_x2, bg_y2), (0, 0, 0), -1)  # Black background
         
         # Apply transparency
         alpha = 0.8
         cv2.addWeighted(overlay, alpha, visualization, 1 - alpha, 0, visualization)
         
-        # Draw text in white
-        cv2.putText(visualization, text, (text_x, text_y),
-                   font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+        # Draw each line of text (from bottom to top)
+        current_y = h - padding
+        for i in range(len(text_lines) - 1, -1, -1):  # Draw from last line to first
+            line = text_lines[i]
+            text_width = line_widths[i]
+            text_height = line_heights[i]
+            text_x = (w - text_width) // 2
+            cv2.putText(visualization, line, (text_x, current_y),
+                       font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+            # Move up for next line
+            if i > 0:
+                current_y -= (text_height + line_spacing)
 
     def _draw_measurement_line(self, visualization: np.ndarray, p1: tuple, p2: tuple, measurement_name: str, scale: float = 1.0):
         """Draw professional measurement line with gradient effect."""
