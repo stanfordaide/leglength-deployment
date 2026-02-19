@@ -448,6 +448,15 @@ if [ -d "$MERCURE_INSTALL_DIR" ] && [ -f "$MERCURE_CONFIG_DIR/mercure.json" ]; t
     sudo chown mercure:mercure "$MERCURE_CONFIG_DIR/mercure.json" 2>/dev/null || \
         sudo chown root:root "$MERCURE_CONFIG_DIR/mercure.json"
     sudo chmod 644 "$MERCURE_CONFIG_DIR/mercure.json"
+    
+    # Verify the copied file has correct values
+    if grep -q '"graphite_ip": "graphite"' "$MERCURE_CONFIG_DIR/mercure.json" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Updated $MERCURE_CONFIG_DIR/mercure.json (graphite_ip=graphite verified)"
+    else
+        echo -e "  ${YELLOW}⚠${NC} Warning: graphite_ip may not be set correctly in installed config"
+        grep '"graphite_ip"' "$MERCURE_CONFIG_DIR/mercure.json" | head -1 || true
+    fi
+    
     echo -e "  ${GREEN}✓${NC} Updated $MERCURE_CONFIG_DIR/mercure.json"
     
     # Update db.env if it exists
@@ -476,7 +485,19 @@ else
         # Export MERCURE_DB_PATH for installer to use
         export MERCURE_DB_PATH="${MERCURE_DB_PATH:-/opt/mercure/db}"
         
-        # Copy db.env to config directory before install (installer reads from there)
+        # Create /opt/mercure/config directory if it doesn't exist (installer will create it, but we need it now)
+        sudo mkdir -p "$MERCURE_CONFIG_DIR"
+        
+        # Copy db.env to INSTALLED location BEFORE installer runs
+        # The installer checks /opt/mercure/config/db.env FIRST (line 67) and uses that password
+        # This ensures our password from config.env is used, not a random one
+        if [ -f "$REPO_ROOT/mercure/config-generated/db.env" ]; then
+            sudo cp "$REPO_ROOT/mercure/config-generated/db.env" "$MERCURE_CONFIG_DIR/db.env"
+            sudo chmod 600 "$MERCURE_CONFIG_DIR/db.env"
+            echo -e "  ${GREEN}✓${NC} Pre-placed db.env at $MERCURE_CONFIG_DIR/db.env (installer will use this password)"
+        fi
+        
+        # Also copy to source config directory (for reference, installer doesn't read from here)
         if [ -f "$REPO_ROOT/mercure/config-generated/db.env" ]; then
             mkdir -p "$REPO_ROOT/mercure/config"
             cp "$REPO_ROOT/mercure/config-generated/db.env" "$REPO_ROOT/mercure/config/db.env"
@@ -690,10 +711,17 @@ if [ -f "$GRAFANA_DATASOURCES_TEMPLATE" ]; then
         < "$GRAFANA_DATASOURCES_TEMPLATE" \
         > "$GRAFANA_DATASOURCES_OUTPUT"
     
+    # Verify substitution worked
+    if grep -q '\${' "$GRAFANA_DATASOURCES_OUTPUT" 2>/dev/null; then
+        echo -e "  ${RED}✗${NC} ERROR: Unsubstituted variables found in datasources.yml!"
+        grep -n '\${' "$GRAFANA_DATASOURCES_OUTPUT" | head -5
+        exit 1
+    fi
+    
     # Set permissions: readable by container (644), but gitignored (contains passwords)
     chmod 644 "$GRAFANA_DATASOURCES_OUTPUT"
     
-    echo -e "  ${GREEN}✓${NC} monitoring-v2/config/grafana/provisioning/datasources/datasources.yml created"
+    echo -e "  ${GREEN}✓${NC} monitoring-v2/config/grafana/provisioning/datasources/datasources.yml created and validated"
 else
     echo -e "  ${YELLOW}⚠${NC} Template not found: $GRAFANA_DATASOURCES_TEMPLATE (using static config)"
 fi

@@ -1,15 +1,12 @@
 # Monitoring - Metrics Collection Stack
 #
 # PORT SCHEME (9030 series):
-#   - 9030: Grafana
-#   - 9031: Workflow API (internal only)
+#   - 9032: Grafana
 #   - 9033: Prometheus
+#   - 9034: PostgreSQL (AI results storage)
 #   - 9038: Graphite (Carbon line receiver)
 #   - 9039: Graphite Pickle receiver
 #   - 9041: Graphite Web UI
-#
-# NOTE: Database ports are NOT exposed to host - internal access only via service name
-# All services join the shared 'leglength-network' for inter-container communication
 
 services:
   # =============================================================================
@@ -78,7 +75,8 @@ services:
       - POSTGRES_USER=${MONITORING_DB_USER:-monitoring}
       - POSTGRES_PASSWORD=${MONITORING_DB_PASS:-monitoring123}
       - PGDATA=/var/lib/postgresql/data/pgdata
-    # Database port not exposed to host - internal access only via service name
+    ports:
+      - "${MONITORING_DB_PORT:-9034}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -128,7 +126,6 @@ networks:
   leglength-network:
     external: true
     name: leglength-network
-  # All services join the shared leglength-network for inter-container communication
 
 volumes:
   prometheus_data:

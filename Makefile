@@ -131,6 +131,9 @@ start-all: mercure-start orthanc-start monitoring-start
 stop-all: monitoring-stop orthanc-stop mercure-stop
 	@printf "$(YELLOW)All services stopped.$(RESET)\n"
 
+restart-all: stop-all start-all
+	@printf "$(GREEN)✅ All services restarted$(RESET)\n"
+
 ps:
 	@sudo docker ps --filter "name=orthanc" --filter "name=mercure" --filter "name=workflow" --filter "name=grafana" --filter "name=prometheus" --filter "name=monitoring" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
@@ -289,6 +292,12 @@ mercure-start:
 				sudo chown root:root /opt/mercure/config/mercure.json; \
 			sudo chmod 644 /opt/mercure/config/mercure.json; \
 			printf "  $(GREEN)✅$(RESET) mercure.json copied to /opt/mercure/config/\n"; \
+			# Verify graphite_ip is set correctly \
+			if sudo grep -q '"graphite_ip": "graphite"' /opt/mercure/config/mercure.json 2>/dev/null; then \
+				printf "  $(GREEN)✅$(RESET) Verified: graphite_ip=graphite\n"; \
+			else \
+				printf "  $(YELLOW)⚠️$(RESET) Warning: graphite_ip may not be 'graphite'\n"; \
+			fi; \
 		elif [ ! -f "/opt/mercure/config/mercure.json" ]; then \
 			printf "  $(YELLOW)⚠️$(RESET) mercure.json not found! Run 'make setup' first.\n"; \
 			exit 1; \
@@ -303,6 +312,9 @@ mercure-stop:
 	@printf "$(YELLOW)Stopping Mercure...$(RESET)\n"
 	@cd /opt/mercure && sudo docker compose down 2>/dev/null || printf "Mercure not running\n"
 	@printf "$(YELLOW)Mercure stopped$(RESET)\n"
+
+mercure-restart: mercure-stop mercure-start
+	@printf "$(GREEN)✅ Mercure restarted$(RESET)\n"
 
 mercure-ps:
 	@printf "$(CYAN)Mercure Containers:$(RESET)\n"
@@ -387,6 +399,9 @@ monitoring-stop:
 	@cd monitoring-v2 && make stop
 	@printf "$(YELLOW)Monitoring stopped$(RESET)\n"
 
+monitoring-restart: monitoring-stop monitoring-start
+	@printf "$(GREEN)✅ Monitoring restarted with updated config$(RESET)\n"
+
 monitoring-ps:
 	@printf "$(CYAN)Monitoring Containers:$(RESET)\n"
 	@cd monitoring-v2 && docker compose ps
@@ -470,14 +485,48 @@ setup-config:
 		exit 1; \
 	fi
 	@./scripts/setup-config.sh
+	@printf "\n"
+	@printf "$(CYAN)Verifying generated configs...$(RESET)\n"
+	@# Verify Mercure config if installed
 	@if [ -f mercure/config-generated/mercure.json ] && [ -d /opt/mercure/config ]; then \
+		printf "$(CYAN)Verifying Mercure config...$(RESET)\n"; \
+		if grep -q '"graphite_ip": "graphite"' mercure/config-generated/mercure.json 2>/dev/null; then \
+			printf "  $(GREEN)✅$(RESET) graphite_ip=graphite in generated config\n"; \
+		else \
+			printf "  $(YELLOW)⚠️$(RESET) graphite_ip may not be 'graphite'\n"; \
+		fi; \
+		if ! grep -q '\${' mercure/config-generated/mercure.json 2>/dev/null; then \
+			printf "  $(GREEN)✅$(RESET) No unsubstituted variables in mercure.json\n"; \
+		else \
+			printf "  $(RED)✗$(RESET) Unsubstituted variables found!\n"; \
+			grep -n '\${' mercure/config-generated/mercure.json | head -3; \
+		fi; \
 		printf "$(CYAN)Copying mercure.json to /opt/mercure/config/...$(RESET)\n"; \
 		sudo cp mercure/config-generated/mercure.json /opt/mercure/config/mercure.json && \
 		sudo chown mercure:mercure /opt/mercure/config/mercure.json 2>/dev/null || \
+			sudo chown root:root /opt/mercure/config/mercure.json; \
 		sudo chmod 644 /opt/mercure/config/mercure.json; \
-		printf "$(GREEN)✅ mercure.json copied to /opt/mercure/config/$(RESET)\n"; \
+		printf "  $(GREEN)✅$(RESET) mercure.json copied to /opt/mercure/config/\n"; \
 	fi
+	@# Verify Grafana datasources
+	@if [ -f monitoring-v2/config/grafana/provisioning/datasources/datasources.yml ]; then \
+		printf "$(CYAN)Verifying Grafana datasources...$(RESET)\n"; \
+		if ! grep -q '\${' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml 2>/dev/null; then \
+			printf "  $(GREEN)✅$(RESET) No unsubstituted variables in datasources.yml\n"; \
+		else \
+			printf "  $(RED)✗$(RESET) Unsubstituted variables found!\n"; \
+			grep -n '\${' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml | head -3; \
+		fi; \
+		if grep -q 'mercure_db_1' monitoring-v2/config/grafana/provisioning/datasources/datasources.yml 2>/dev/null; then \
+			printf "  $(GREEN)✅$(RESET) BOOKKEEPER_DB_HOST=mercure_db_1 (service name)\n"; \
+		fi; \
+	fi
+	@printf "\n"
 	@printf "$(GREEN)✅ All configs generated from config.env$(RESET)\n"
+	@printf "\n"
+	@printf "$(YELLOW)Note:$(RESET) If services are running, restart them to apply config changes:\n"
+	@printf "  make mercure-restart    # Restart Mercure to use new config\n"
+	@printf "  make monitoring-restart # Restart Grafana to reload datasources\n"
 
 # =============================================================================
 # CLEANUP
