@@ -329,13 +329,27 @@ function Matcher.analyze(studyId, tags, instances)
 
 
     -- CHECK 3: Does this match our CT Abdomen patterns?
+    -- Treat as ORIGINAL: send ALL instances to MERCURE for AI processing
     local matches, pattern = matchesCTAbdomenStudy(studyDesc)
     if matches then
         result.shouldRoute = true
-        result.studyType = Matcher.STUDY_TYPES.CT_ABDOMEN
+        result.studyType = Matcher.STUDY_TYPES.ORIGINAL
         result.reason = "matches_ct_abdomen_pattern"
         result.matchedPattern = pattern
-        
+
+        if instances and #instances > 0 then
+            result.selectedInstances = { forAI = instances }  -- All instances
+        else
+            result.reason = "matches_pattern_but_no_suitable_instance"
+            result.shouldRoute = false
+        end
+
+        Log.info("Study matched CT Abdomen pattern (sending all instances to MERCURE)", {
+            studyId = studyId,
+            pattern = pattern,
+            instanceCount = instances and #instances or 0,
+        })
+
         return result
     end
     

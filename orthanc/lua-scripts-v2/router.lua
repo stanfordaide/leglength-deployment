@@ -155,28 +155,38 @@ local function routeToAI(studyId, matchResult)
         Log.info("AI processing disabled, skipping MERCURE", { studyId = studyId })
         return true
     end
-    
-    local instance = matchResult.selectedInstances and matchResult.selectedInstances.forAI
-    if not instance then
-        Log.warn("No instance selected for AI", { studyId = studyId })
+
+    local forAI = matchResult.selectedInstances and matchResult.selectedInstances.forAI
+    if not forAI then
+        Log.warn("No instance(s) selected for AI", { studyId = studyId })
         return false
     end
-    
-    local instanceId = Utils.safeGet(instance, "ID", nil)
-    if not instanceId then
-        Log.warn("Selected instance has no ID", { studyId = studyId })
-        return false
-    end
-    
+
     local destination = getDestination("MERCURE")
-    local success, jobId = sendInstance(studyId, instanceId, destination)
+    local success, result
+
+    -- forAI can be a single instance (bone length) or array of instances (CT abdomen)
+    if type(forAI) == "table" and forAI[1] then
+        -- Array of instances: send all
+        local s, f = sendInstances(studyId, forAI, destination)
+        success = f == 0
+    else
+        -- Single instance
+        local instance = forAI
+        local instanceId = Utils.safeGet(instance, "ID", nil)
+        if not instanceId then
+            Log.warn("Selected instance has no ID", { studyId = studyId })
+            return false
+        end
+        success, result = sendInstance(studyId, instanceId, destination)
+    end
     
     -- For MERCURE sends, also register as a pending job (DISABLED - tracking disabled)
     -- The job completes when Mercure finishes sending to the AI module
     -- if success and jobId and Tracker.registerPendingJob then
     --     Tracker.registerPendingJob(jobId, studyId, "MERCURE")
     -- end
-    
+
     return success
 end
 
