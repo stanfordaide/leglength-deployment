@@ -93,7 +93,7 @@ Config.MATCHING = {
         "BONE LENGTH",                        -- Shorter fallback
     },
 
-    -- CT Abdomen studies: pass-through to LPCH/LPCHT (no AI processing)
+    -- CT Abdomen studies: send all instances to MERCURE for AI processing
     CT_ABDOMEN_PATTERNS = {
         "CT ABDOMEN PELVIS W IV CONTRAST",
         "CT_ABDOMEN_PELVIS_W_IV_CONTRAST",
