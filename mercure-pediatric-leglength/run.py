@@ -1,7 +1,11 @@
 #!/usr/bin/env python
+# Limit PyTorch CPU threads early (before heavy imports) to reduce I/O on NAS
+import os
+import torch
+torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2")))
+
 from leglength.outputs import DicomProcessor
 from leglength.inference import inference_handler
-import os
 import json
 import argparse
 import logging
@@ -30,27 +34,44 @@ def parse_args():
     
     return parser.parse_args()
 
+def _get_default_models(log: logging.Logger = None) -> list:
+    """Load default models from registry.json so they stay in sync with available models."""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        registry_path = os.path.join(script_dir, 'registry.json')
+        with open(registry_path, 'r') as f:
+            registry = json.load(f)
+        models = list(registry.keys())
+        if models:
+            return models
+    except Exception as e:
+        if log:
+            log.debug(f"Could not load registry for defaults: {e}")
+    return ['resnet101', 'efficientnet_v2_m', 'mobilenet_v3_large']
+
+
 def load_config(input_dir: Path, log: logging.Logger) -> tuple[dict, dict]:
     """Load configuration from task.json in input directory, or use defaults.
     
     Returns:
         tuple: (config dict, task_info dict with study_uid, etc.)
     """
-    # Default configuration
     defaults = {
-        'models': ['resnet101', 'efficientnet_v2_m', 'mobilenet_v3_large'],
+        'models': _get_default_models(log),
         'series_offset': 1000,
         'femur_threshold': 2.0,
         'tibia_threshold': 2.0,
         'total_threshold': 5.0,
-        'confidence_threshold': 0.0
+        'confidence_threshold': 0.0,
+        'num_threads': 2,  # Limit CPU threads to reduce I/O thrashing on NAS
+        'max_input_files': None,  # Limit .dcm files to scan; None=unlimited
     }
     
     task_file = input_dir / "task.json"
     task_info = {}
     
     try:
-        if task_file.exists():
+        if task_file.is_file():
             with open(task_file, "r") as f:
                 task = json.load(f)
             
@@ -80,7 +101,10 @@ def load_config(input_dir: Path, log: logging.Logger) -> tuple[dict, dict]:
                 log.warning("No 'process.settings' found in task.json")
         else:
             config = {}
-            log.warning(f"No task.json found in {input_dir}, using defaults")
+            if task_file.exists() and task_file.is_dir():
+                log.warning(f"task.json is a directory (check your -v mount: file may not exist on host)")
+            else:
+                log.warning(f"No task.json found in {input_dir}, using defaults")
         
         # Merge with defaults
         for key, value in defaults.items():
@@ -168,6 +192,75 @@ def convert_numpy_for_json(obj):
         return obj
 
 
+def extract_dicom_headers(dicom_path: Path, logger: logging.Logger = None) -> dict:
+    """
+    Extract DICOM header attributes into a JSON-serializable dictionary.
+    Uses a curated list of common tags; skips binary data and overly complex sequences.
+    """
+    # Common DICOM tags useful for workflow, auditing, and debugging
+    _TAGS_OF_INTEREST = [
+        'AccessionNumber', 'AcquisitionDate', 'AcquisitionTime', 'BodyPartExamined',
+        'Columns', 'ContentDate', 'ContentTime', 'ConversionType', 'DeviceSerialNumber',
+        'EchoNumbers', 'EchoTime', 'EchoTrainLength', 'EstimatedRadiographicMagnificationFactor',
+        'ImageOrientationPatient', 'ImagePositionPatient', 'ImagerPixelSpacing',
+        'InstitutionAddress', 'InstitutionName', 'InstanceNumber', 'Manufacturer',
+        'ManufacturerModelName', 'Modality', 'PatientAge', 'PatientBirthDate',
+        'PatientID', 'PatientName', 'PatientPosition', 'PatientSex', 'PatientWeight',
+        'PercentPhaseFieldOfView', 'PerformingPhysicianName', 'PhotometricInterpretation',
+        'PixelAspectRatio', 'PixelSpacing', 'ReferringPhysicianName', 'RepetitionTime',
+        'RequestedProcedureDescription', 'RequestingService', 'Rows',
+        'SeriesDate', 'SeriesDescription', 'SeriesInstanceUID', 'SeriesNumber',
+        'SeriesTime', 'SliceLocation', 'SliceThickness', 'SoftwareVersions',
+        'SOPClassUID', 'SOPInstanceUID', 'SpacingBetweenSlices', 'StationName',
+        'StudyDate', 'StudyDescription', 'StudyID', 'StudyInstanceUID',
+        'StudyTime', 'WindowCenter', 'WindowWidth',
+    ]
+    headers = {}
+    try:
+        ds = pydicom.dcmread(str(dicom_path), stop_before_pixels=True)
+        for name in _TAGS_OF_INTEREST:
+            if not hasattr(ds, name):
+                continue
+            elem = getattr(ds, name, None)
+            if elem is None:
+                continue
+            try:
+                if hasattr(elem, '__iter__') and not isinstance(elem, (str, bytes)):
+                    val = list(elem)
+                else:
+                    val = elem
+                # Convert to JSON-serializable types
+                if isinstance(val, pydicom.valuerep.PersonName):
+                    val = str(val)
+                elif isinstance(val, (pydicom.valuerep.DSdecimal, pydicom.valuerep.IS)):
+                    val = float(val) if isinstance(val, pydicom.valuerep.DSdecimal) else int(val)
+                elif isinstance(val, bytes):
+                    continue  # Skip binary
+                elif isinstance(val, pydicom.sequence.Sequence):
+                    continue  # Skip complex sequences for brevity
+                elif isinstance(val, list):
+                    out = []
+                    for item in val:
+                        if isinstance(item, (str, int, float)):
+                            out.append(item)
+                        elif hasattr(item, 'original_string'):
+                            out.append(str(item))
+                        else:
+                            out.append(str(item))
+                    val = out
+                else:
+                    val = str(val) if val is not None else None
+                if val is not None:
+                    headers[name] = val
+            except Exception:
+                if logger:
+                    logger.debug(f"Could not serialize DICOM tag {name}")
+    except Exception as e:
+        if logger:
+            logger.warning(f"Could not read DICOM headers from {dicom_path}: {e}")
+    return headers
+
+
 def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_dir: Path, 
                         series_id: str, accession_number: str = None, 
                         processing_time: float = None, logger: logging.Logger = None) -> None:
@@ -176,6 +269,7 @@ def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_d
     
     The JSON output contains:
     - metadata: Processing information, timestamps, file paths, etc.
+    - dicom_headers: Extracted DICOM header attributes (PatientID, StudyInstanceUID, etc.)
     - configuration: All config parameters used for processing
     - results: Complete inference results including:
         - boxes: Bounding box coordinates for detected landmarks
@@ -185,10 +279,13 @@ def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_d
         - uncertainties: Model uncertainty metrics (for ensemble mode)
         - point_statistics: Statistics about point detections
         - issues: Any problems or warnings during processing
-        - dicom_metadata: DICOM header information
+        - dicom_metadata: DICOM metadata subset from inference
         - output_files: Paths to all generated output files
         - individual_model_predictions: Raw predictions from each model (ensemble mode)
     """
+    
+    # Extract DICOM headers for inclusion in JSON output
+    dicom_headers = extract_dicom_headers(dicom_path, logger)
     
     # Create comprehensive results dictionary
     comprehensive_results = {
@@ -204,6 +301,7 @@ def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_d
             'output_directory': str(output_dir),
             'models_used': config.get('models', [])
         },
+        'dicom_headers': dicom_headers,
         'configuration': config,
         'results': results
     }
@@ -213,10 +311,13 @@ def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_d
     
     # Save to JSON file
     # Use result.json as the standard output filename for Mercure
-    json_output_path = output_dir / 'result.json'
+    # json_output_path = output_dir / 'result.json'
+    json_output_path = output_dir / dicom_path.with_suffix('.json').name
+    
     try:
         with open(json_output_path, 'w') as f:
             json.dump(serializable_results, f, indent=2, sort_keys=True)
+            
         
         if logger:
             logger.info(f"Complete results saved to: {json_output_path}")
@@ -392,11 +493,13 @@ def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logg
     # Check if the image was skipped
     if results.get('skipped', False):
         logger.warning(f"Skipping DICOM {dicom_path.name}: {results.get('reason', 'Unknown reason')}")
-        # Still save a JSON result for the skipped image
+        # Still save a JSON result for the skipped image, including DICOM headers
         json_output_path = output_dir / 'result.json'
         try:
+            skip_output = dict(results)
+            skip_output['dicom_headers'] = extract_dicom_headers(dicom_path, logger)
             with open(json_output_path, 'w') as f:
-                json.dump(results, f, indent=2, sort_keys=True)
+                json.dump(convert_numpy_for_json(skip_output), f, indent=2, sort_keys=True)
             logger.info(f"Skipped image results saved to: {json_output_path}")
         except Exception as e:
             logger.error(f"Error saving results for skipped image: {e}")
@@ -605,6 +708,11 @@ def main():
     monitor = None
     logger.info("Monitoring disabled - metrics will be emitted to Graphite via Mercure")
     
+    # Apply thread limit from config (reduces I/O thrashing on NAS)
+    num_threads = config.get('num_threads', 2)
+    torch.set_num_threads(num_threads)
+    logger.info(f"PyTorch/OMP thread limit: {num_threads}")
+
     # Validate configuration
     validation_errors = validate_config(config, logger)
     if validation_errors:
@@ -621,17 +729,23 @@ def main():
     # Create temporary directory
     tmp_dir = Path(tempfile.mkdtemp(prefix="leglength_"))
     
-    # Process input directory
+    # Process input directory (bounded scan to avoid heavy I/O on NAS with 10k+ files)
+    max_input_files = config.get('max_input_files')
     series = {}
+    files_scanned = 0
     for entry in os.scandir(args.input_dir):
         if entry.name.endswith(".dcm") and not entry.is_dir():
-            # Group files by series
             series_id = entry.name.split("#", 1)[0]
             if series_id not in series:
                 series[series_id] = []
             series[series_id].append(entry.path)
-    
-    
+            files_scanned += 1
+            if max_input_files is not None and files_scanned >= max_input_files:
+                logger.warning(f"Stopped scan after {max_input_files} files (max_input_files limit)")
+                break
+
+    if files_scanned > 1000:
+        logger.warning(f"Scanned {files_scanned} files - directory listing on NAS can be slow")
     logger.info(f"Series: {series}")
     
     

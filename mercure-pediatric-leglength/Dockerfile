@@ -4,7 +4,10 @@
 FROM python@sha256:2be8daddbb82756f7d1f2c7ece706aadcb284bf6ab6d769ea695cc3ed6016743
 
 # Environment variables for better container behavior
-ENV PYTHONUNBUFFERED=1 \
+# Limit CPU threads to reduce I/O thrashing on NAS (OMP/MKL used by PyTorch)
+ENV OMP_NUM_THREADS=2 \
+    MKL_NUM_THREADS=2 \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONIOENCODING=utf-8 \
     LANG=C.UTF-8 \

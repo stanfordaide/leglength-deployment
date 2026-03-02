@@ -35,6 +35,7 @@ local Matcher = {}
 Matcher.STUDY_TYPES = {
     ORIGINAL = "ORIGINAL",     -- Needs AI processing
     AI_RESULT = "AI_RESULT",   -- Has AI output, route to final destinations
+    CT_ABDOMEN = "CT_ABDOMEN", -- CT Abdomen study, route to LPCH/LPCHT
     UNMATCHED = "UNMATCHED",   -- Doesn't match any rules
 }
 
@@ -49,6 +50,22 @@ local function matchesBoneLengthStudy(studyDescription)
     if not studyDescription then return false, nil end
     
     local patterns = Config.MATCHING and Config.MATCHING.BONE_LENGTH_PATTERNS or {}
+    local upperDesc = Utils.upper(studyDescription)
+    
+    for _, pattern in ipairs(patterns) do
+        if upperDesc:find(Utils.upper(pattern)) then
+            return true, pattern
+        end
+    end
+    
+    return false, nil
+end
+
+
+local function matchesCTAbdomenStudy(studyDescription)
+    if not studyDescription then return false, nil end
+    
+    local patterns = Config.MATCHING and Config.MATCHING.CT_ABDOMEN_PATTERNS or {}
     local upperDesc = Utils.upper(studyDescription)
     
     for _, pattern in ipairs(patterns) do
@@ -306,6 +323,18 @@ function Matcher.analyze(studyId, tags, instances)
             pattern = pattern,
             hasInstance = highRes ~= nil,
         })
+        
+        return result
+    end
+
+
+    -- CHECK 3: Does this match our CT Abdomen patterns?
+    local matches, pattern = matchesCTAbdomenStudy(studyDesc)
+    if matches then
+        result.shouldRoute = true
+        result.studyType = Matcher.STUDY_TYPES.CT_ABDOMEN
+        result.reason = "matches_ct_abdomen_pattern"
+        result.matchedPattern = pattern
         
         return result
     end

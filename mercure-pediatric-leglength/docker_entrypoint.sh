@@ -38,22 +38,27 @@ run_as_user() {
             mkdir -p "$MONITORING_DATA_PATH"
             
             if ! chown $target_uid:$target_gid "$MONITORING_DATA_PATH" 2>/dev/null; then
-                echo "-- Warning: Cannot change ownership of monitoring path, attempting chmod 777"
+                if [ "${SKIP_PERMISSION_FIX:-0}" != "1" ]; then
+                    echo "-- Warning: Cannot change ownership of monitoring path, attempting chmod 777"
+                    chmod 777 "$MONITORING_DATA_PATH" 2>/dev/null || true
+                fi
             fi
-            chmod 777 "$MONITORING_DATA_PATH" 2>/dev/null || true
         fi
         
         # Try to fix ownership, but don't fail if we can't
         if ! chown $target_uid:$target_gid /output 2>/dev/null; then
             echo "-- Warning: Cannot change ownership of /output (this is often normal with mounted volumes)"
-            echo "-- Attempting to fix permissions instead..."
-        fi
-        
-        # Try to set permissions - this usually works even when chown doesn't
-        if chmod 777 /output 2>/dev/null; then
-            echo "-- Set /output permissions to 777 (world-writable)"
-        else
-            echo "-- Warning: Cannot change permissions on /output"
+            # Skip chmod 777 when SKIP_PERMISSION_FIX=1 (expensive on NAS, can hang for minutes)
+            if [ "${SKIP_PERMISSION_FIX:-0}" != "1" ]; then
+                echo "-- Attempting to fix permissions instead..."
+                if chmod 777 /output 2>/dev/null; then
+                    echo "-- Set /output permissions to 777 (world-writable)"
+                else
+                    echo "-- Warning: Cannot change permissions on /output"
+                fi
+            else
+                echo "-- Skipping chmod (SKIP_PERMISSION_FIX=1 - recommended for NAS mounts)"
+            fi
         fi
         
         # Test if we can write to the directory after switching users

@@ -105,8 +105,8 @@ make <service>-start   # Start fresh
 
 ```bash
 # Clone to desired location
-cd /opt  # or your preferred directory
-sudo git clone <repository-url> leglength-deployment
+cd /opt/projects  # or your preferred directory
+sudo git clone https://github.com/stanfordaide/leglength-deployment.git
 cd leglength-deployment
 
 # Set ownership (if not running as root)
@@ -117,7 +117,7 @@ sudo chown -R $USER:$USER .
 
 ```bash
 # Create config.env from template
-make init
+sudo make init
 
 # Edit with your values (passwords, storage paths, etc.)
 nano config.env  # or vim/your preferred editor
@@ -155,10 +155,7 @@ This creates:
 
 ```bash
 # Build the Docker image for the AI module
-make ai-build
-
-# Verify model loading works
-make ai-test
+sudo make ai-build
 ```
 
 ### Step 5: Start Services
@@ -175,6 +172,7 @@ sudo make mercure-start      # Finally Mercure
 sudo make start-all
 ```
 
+
 ### Step 6: Verify Installation
 
 ```bash
@@ -184,6 +182,12 @@ make verify
 # Or check individually:
 make status    # Show service status
 make urls      # Show service URLs
+```
+
+
+```bash
+# Check from host:
+ssh -L 9010:localhost:9010 -L 9020:localhost:9020 -L 9040:localhost:9040 -N [username]@[remote_host]
 ```
 
 ### Step 7: Initial Configuration

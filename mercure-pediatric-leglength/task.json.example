@@ -1,12 +1,14 @@
 {
     "process": {
         "settings": {
-            "models": ["resnet101", "vit_l_16", "resnext101_32x8d"],
+            "models": ["rn50adncti", "rn50adkpncti", "rn50adkp"],
             "series_offset": 1000,
             "femur_threshold": 0.2,
             "tibia_threshold": 0.2,
             "total_threshold": 1.0,
             "confidence_threshold": 0.0,
+            "num_threads": 2,
+            "max_input_files": null,
             "monitoring": {
                 "enabled": true,
                 "influxdb": {

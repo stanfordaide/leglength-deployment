@@ -85,6 +85,11 @@ docker run -v $(pwd)/input:/input -v $(pwd)/output:/output \
 
 **Note on Permissions**: The container automatically handles output directory permissions. If you encounter permission issues, the container will run as root temporarily to fix permissions and then switch to a non-root user for security.
 
+**NAS Optimization** (for high I/O environments):
+- Set `SKIP_PERMISSION_FIX=1` to disable `chmod 777` on output (expensive on NAS, can hang for minutes)
+- `OMP_NUM_THREADS=1` or `2` limits CPU threads (default: 2) to reduce I/O thrashing
+- In task.json: `num_threads: 1` and `max_input_files: 500` to limit directory scanning
+
 ### Advanced Usage
 
 For more control over user permissions, you can:
