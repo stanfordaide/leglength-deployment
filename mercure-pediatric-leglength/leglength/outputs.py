@@ -15,10 +15,6 @@ from io import BytesIO
 
 from typing import List
 
-# AI disclaimer text for SC and SR outputs
-AI_DISCLAIMER = "Preliminary AI-generated measurement. Please refer to the radiology report for finalized measurement values"
-
-
 class StanfordAIDECodes:
     """Centralized Stanford AIDE codes and constants"""
     CODING_SCHEME = "STANFORD_AIDE"
@@ -300,8 +296,16 @@ class DicomProcessor:
         scale_factor = max(0.3, min(2.5, scale_factor))
         return scale_factor
 
+    # AI disclaimer for DICOM SC output (not in DICOM SR)
+    AI_DISCLAIMER = "Preliminary AI-generated measurement. Please refer to the radiology report for finalized measurement values"
+
     def _create_visualization_image(self, results: dict, dicom_path: str) -> np.ndarray:
-        """Create the visualization image with measurements and annotations."""
+        """Create the visualization image with measurements and annotations.
+        
+        Image content (keypoints, measurement lines) is drawn on the image.
+        All text (disclaimer, measurement values) is placed in a footer panel BELOW the image
+        to avoid blocking the clinical image.
+        """
         self.logger.info("=== Starting visualization creation ===")
         
         # Load DICOM
@@ -316,7 +320,7 @@ class DicomProcessor:
         if original_image.min() == original_image.max():
             # Create a test pattern
             test_img = np.random.randint(0, 255, original_image.shape, dtype=np.uint8)
-            visualization = cv2.cvtColor(test_img, cv2.COLOR_GRAY2BGR)
+            image_region = cv2.cvtColor(test_img, cv2.COLOR_GRAY2BGR)
         else:
             # Apply medical imaging contrast enhancement
             # Use CLAHE (Contrast Limited Adaptive Histogram Equalization)
@@ -328,25 +332,29 @@ class DicomProcessor:
             enhanced_image = clahe.apply(normalized_image)
             
             # Convert to RGB with slight blue tint (medical imaging standard)
-            visualization = cv2.cvtColor(enhanced_image, cv2.COLOR_GRAY2BGR)
+            image_region = cv2.cvtColor(enhanced_image, cv2.COLOR_GRAY2BGR)
             # Add subtle blue tint for medical aesthetic
-            visualization[:,:,0] = (visualization[:,:,0] * 0.95).astype(np.uint8)  # Reduce red
-            visualization[:,:,1] = (visualization[:,:,1] * 0.98).astype(np.uint8)  # Slightly reduce green
+            image_region[:,:,0] = (image_region[:,:,0] * 0.95).astype(np.uint8)  # Reduce red
+            image_region[:,:,1] = (image_region[:,:,1] * 0.98).astype(np.uint8)  # Slightly reduce green
         
         # Calculate scale factor based on image dimensions
-        scale = self._get_scale_factor(visualization)
+        scale = self._get_scale_factor(image_region)
 
+        # Extend canvas: add footer panel BELOW the image (no overlay on clinical image)
+        img_h, img_w = image_region.shape[:2]
+        footer_height = int(180 * scale)  # Space for disclaimer + measurements (below image, no overlay)
+        visualization = np.zeros((img_h + footer_height, img_w, 3), dtype=np.uint8)
+        visualization[:img_h, :] = image_region
+        visualization[img_h:, :] = (40, 40, 40)  # Dark footer background
         
-        # Draw all 8 keypoints first
+        # Draw keypoints and measurement lines ON the image only (no text overlay)
         self._draw_all_keypoints(visualization, results, scale)
         
-        ## Add medical imaging overlay with patient info if available
-        # self._add_medical_overlay(visualization, dcm)
-        
         measurements_processed = 0
-        total_lengths = {}  # Store total lengths for bottom text
+        segment_measurements = {}  # For footer: name -> cm
+        total_lengths = {}  # For footer: PLL_R_LGL, PLL_L_LGL
         
-        # Draw measurements
+        # Draw measurement lines and points on image (NO labels - those go in footer)
         for measure in self.config['measurements']:
             name = measure['name']
             join_points = measure['join_points']
@@ -363,26 +371,23 @@ class DicomProcessor:
                 # Skip drawing lines for total leg length measurements
                 is_total_length = name in ['PLL_R_LGL', 'PLL_L_LGL']
                 
-                # Store total lengths for bottom text
+                # Store for footer display
                 if is_total_length:
                     total_lengths[name] = results['measurements'][name]['centimeters']
-                    continue  # Skip drawing lines and labels for total lengths
+                    continue  # Skip drawing lines for total lengths
+                
+                segment_measurements[name] = results['measurements'][name]['centimeters']
                 
                 # Validate coordinates are within image bounds
-                h, w = visualization.shape[:2]
-                if not (0 <= p1[0] < w and 0 <= p1[1] < h and 0 <= p2[0] < w and 0 <= p2[1] < h):
-                    # Clamp to image bounds
-                    p1 = (max(0, min(w-1, p1[0])), max(0, min(h-1, p1[1])))
-                    p2 = (max(0, min(w-1, p2[0])), max(0, min(h-1, p2[1])))
-                # Draw professional measurement line with gradient effect
+                if not (0 <= p1[0] < img_w and 0 <= p1[1] < img_h and 0 <= p2[0] < img_w and 0 <= p2[1] < img_h):
+                    p1 = (max(0, min(img_w-1, p1[0])), max(0, min(img_h-1, p1[1])))
+                    p2 = (max(0, min(img_w-1, p2[0])), max(0, min(img_h-1, p2[1])))
+                # Draw measurement line and points on image (no label overlay)
                 self._draw_measurement_line(visualization, p1, p2, name, scale)
-
-                # Draw professional measurement points with uncertainty-based styling
                 for i, (point, point_id) in enumerate(zip([p1, p2], join_points)):
                     uncertainty = self._get_point_uncertainty(point_id, results)
                     self._draw_measurement_point(visualization, point, uncertainty, i == 0, scale)
-
-                # Do NOT draw labels on the image - they go in the bottom panel to avoid blocking anatomy
+                
                 measurements_processed += 1
                 
             except Exception as e:
@@ -392,10 +397,9 @@ class DicomProcessor:
         
         self.logger.info(f"Processed {measurements_processed} measurements")
         
-        # Add bottom panel with disclaimer and all measurements (below image, not overlaying)
-        all_measurements = dict(results.get('measurements', {}))
-        all_measurements.update(total_lengths)  # Include PLL_R_LGL, PLL_L_LGL if present
-        visualization = self._add_bottom_panel(visualization, all_measurements, scale)
+        # Add footer BELOW image: disclaimer + all measurements (does not overlay on image)
+        self._add_footer_panel(visualization, img_h, img_w, footer_height,
+                              segment_measurements, total_lengths, scale)
         
         # Save debug image with DICOM stem prefix
         from pathlib import Path
@@ -416,139 +420,68 @@ class DicomProcessor:
         elif visualization.shape[2] == 4:  # RGBA
             visualization = cv2.cvtColor(visualization, cv2.COLOR_RGBA2RGB)
         
-        # Watermark is now in the bottom panel (below image)
         return visualization
 
-    def _add_bottom_panel(self, visualization: np.ndarray, all_measurements: dict, scale: float = 1.0) -> np.ndarray:
-        """Add a panel BELOW the image with disclaimer and all measurements (no overlay on anatomy)."""
-        h, w = visualization.shape[:2]
+    def _add_footer_panel(self, visualization: np.ndarray, img_h: int, img_w: int,
+                          footer_height: int, segment_measurements: dict,
+                          total_lengths: dict, scale: float = 1.0):
+        """Add footer panel BELOW the image with disclaimer and measurements (no overlay on image)."""
         font = cv2.FONT_HERSHEY_DUPLEX
-        font_scale = 0.65 * scale
-        font_thickness = max(1, int(2 * scale))
-        line_spacing = int(12 * scale)
-        panel_padding = int(25 * scale)
-
-        # Measurement labels for display
-        measure_labels = {
-            'PLL_R_FEM': 'Right Femur',
-            'PLL_R_TIB': 'Right Tibia',
-            'PLL_R_LGL': 'Right Total Leg',
-            'PLL_L_FEM': 'Left Femur',
-            'PLL_L_TIB': 'Left Tibia',
-            'PLL_L_LGL': 'Left Total Leg',
-        }
-
-        # Build text lines: disclaimer first, then measurements
-        text_lines = [AI_DISCLAIMER]
-        for key in ['PLL_R_FEM', 'PLL_R_TIB', 'PLL_R_LGL', 'PLL_L_FEM', 'PLL_L_TIB', 'PLL_L_LGL']:
-            if key in all_measurements and all_measurements[key] is not None:
-                label = measure_labels.get(key, key)
-                val = all_measurements[key]
-                if isinstance(val, dict):
-                    val = val.get('centimeters', val)
-                text_lines.append(f"{label}: {float(val):.1f} cm")
-
-        # Calculate panel height needed
-        line_heights = []
-        for line in text_lines:
-            (tw, th), baseline = cv2.getTextSize(line, font, font_scale, font_thickness)
-            line_heights.append(th + baseline)
-        total_text_height = sum(line_heights) + (len(text_lines) - 1) * line_spacing
-        panel_height = total_text_height + 2 * panel_padding + int(30 * scale)  # extra for watermark
-
-        # Extend canvas with dark panel below the image
-        panel = np.ones((panel_height, w, 3), dtype=np.uint8) * (40, 40, 40)
-        combined = np.vstack([visualization, panel])
-
-        # Draw text in the panel
-        current_y = h + panel_padding
-        for line in text_lines:
-            (tw, th), baseline = cv2.getTextSize(line, font, font_scale, font_thickness)
-            text_x = max(panel_padding, (w - tw) // 2)
-            cv2.putText(combined, line, (text_x, current_y + th),
-                       font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
-            current_y += th + baseline + line_spacing
-
-        # Stanford AIDE watermark in bottom-right of panel
-        watermark_text = "Stanford AIDE"
-        (ww, wh), _ = cv2.getTextSize(watermark_text, font, 0.6 * scale, max(1, int(1 * scale)))
-        wx = w - ww - int(20 * scale)
-        wy = combined.shape[0] - int(15 * scale)
-        cv2.putText(combined, watermark_text, (wx, wy), font, 0.6 * scale,
-                   (150, 150, 150), max(1, int(1 * scale)), cv2.LINE_AA)
-
-        return combined
-
-    def _add_total_lengths_text(self, visualization: np.ndarray, total_lengths: dict, scale: float = 1.0):
-        """Add text at the bottom showing total leg lengths on separate lines (deprecated - use _add_bottom_panel)."""
-        h, w = visualization.shape[:2]
+        font_small = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.55 * scale
+        font_scale_small = 0.45 * scale
+        font_thickness = max(1, int(1.5 * scale))
+        line_spacing = int(6 * scale)
+        padding = int(12 * scale)
         
-        # Get total lengths
+        # Build all text lines for footer
+        lines = []
+        # 1. AI disclaimer (DICOM SC only)
+        lines.append(self.AI_DISCLAIMER)
+        lines.append("")
+        
+        # 2. Segment measurements
+        name_to_label = {
+            'PLL_R_FEM': 'Right Femur', 'PLL_R_TIB': 'Right Tibia',
+            'PLL_L_FEM': 'Left Femur', 'PLL_L_TIB': 'Left Tibia',
+        }
+        for name in ['PLL_R_FEM', 'PLL_R_TIB', 'PLL_L_FEM', 'PLL_L_TIB']:
+            if name in segment_measurements:
+                label = name_to_label.get(name, name)
+                lines.append(f"{label}: {segment_measurements[name]:.1f} cm")
+        if segment_measurements:
+            lines.append("")
+        
+        # 3. Total lengths
         right_total = total_lengths.get('PLL_R_LGL', None)
         left_total = total_lengths.get('PLL_L_LGL', None)
-        
-        if right_total is None and left_total is None:
-            return  # No total lengths to display
-        
-        # Build text lines (separate lines for each)
-        text_lines = []
         if right_total is not None:
-            text_lines.append(f"Right Total Leg Length = {right_total:.1f} cm")
+            lines.append(f"Right Total Leg Length: {right_total:.1f} cm")
         if left_total is not None:
-            text_lines.append(f"Left Total Leg Length = {left_total:.1f} cm")
+            lines.append(f"Left Total Leg Length: {left_total:.1f} cm")
         
-        if not text_lines:
-            return
+        # Draw lines in footer region (y starts at img_h; putText uses baseline so we add th)
+        y = img_h + padding
+        for line in lines:
+            if not line:
+                y += line_spacing // 2
+                continue
+            # Use smaller font for long disclaimer
+            fs = font_scale_small if len(line) > 50 else font_scale
+            fnt = font_small if len(line) > 50 else font
+            (tw, th), _ = cv2.getTextSize(line, fnt, fs, font_thickness)
+            x = max(padding, (img_w - tw) // 2)
+            # putText y is baseline (bottom of text); use y+th so text top aligns at y
+            cv2.putText(visualization, line, (x, y + th), fnt, fs, (255, 255, 255), font_thickness, cv2.LINE_AA)
+            y += th + line_spacing
         
-        # Scale font
-        font = cv2.FONT_HERSHEY_DUPLEX
-        font_scale = 1.0 * scale
-        font_thickness = max(1, int(2 * scale))
-        
-        # Calculate dimensions for all lines
-        line_heights = []
-        line_widths = []
-        line_spacing = int(5 * scale)
-        
-        for line in text_lines:
-            (text_width, text_height), baseline = cv2.getTextSize(line, font, font_scale, font_thickness)
-            line_widths.append(text_width)
-            line_heights.append(text_height + baseline)
-        
-        # Total height needed
-        total_height = sum(line_heights) + (len(text_lines) - 1) * line_spacing
-        max_width = max(line_widths)
-        
-        # Position at bottom center with padding
-        padding = int(20 * scale)
-        bg_padding = int(10 * scale)
-        
-        # Calculate background rectangle
-        bg_x1 = (w - max_width) // 2 - bg_padding
-        bg_y1 = h - total_height - padding - bg_padding
-        bg_x2 = (w + max_width) // 2 + bg_padding
-        bg_y2 = h - padding + bg_padding
-        
-        # Draw background rectangle for better visibility
-        overlay = visualization.copy()
-        cv2.rectangle(overlay, (bg_x1, bg_y1), (bg_x2, bg_y2), (0, 0, 0), -1)  # Black background
-        
-        # Apply transparency
-        alpha = 0.8
-        cv2.addWeighted(overlay, alpha, visualization, 1 - alpha, 0, visualization)
-        
-        # Draw each line of text (from bottom to top)
-        current_y = h - padding
-        for i in range(len(text_lines) - 1, -1, -1):  # Draw from last line to first
-            line = text_lines[i]
-            text_width = line_widths[i]
-            text_height = line_heights[i]
-            text_x = (w - text_width) // 2
-            cv2.putText(visualization, line, (text_x, current_y),
-                       font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
-            # Move up for next line
-            if i > 0:
-                current_y -= (text_height + line_spacing)
+        # Stanford AIDE watermark in footer bottom-right
+        watermark = "Stanford AIDE"
+        (ww, wh), _ = cv2.getTextSize(watermark, font_small, font_scale_small, font_thickness)
+        wx = img_w - ww - int(15 * scale)
+        wy = img_h + footer_height - int(8 * scale)
+        cv2.putText(visualization, watermark, (wx, wy), font_small, font_scale_small,
+                   (150, 150, 150), font_thickness, cv2.LINE_AA)
 
     def _draw_measurement_line(self, visualization: np.ndarray, p1: tuple, p2: tuple, measurement_name: str, scale: float = 1.0):
         """Draw professional measurement line with gradient effect."""
@@ -1761,7 +1694,7 @@ class DicomProcessor:
         
         # Initialize the ContentSequence
         content_seq = []
-
+        
         # Add measurements
         content_seq = self._create_measurements_container(content_seq, results, femur_threshold=config['femur_threshold'], tibia_threshold=config['tibia_threshold'], total_threshold=config['total_threshold'])
         

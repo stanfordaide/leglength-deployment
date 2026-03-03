@@ -92,13 +92,7 @@ Config.MATCHING = {
         "EXTREMITY_BILATERAL_BONE_LENGTH",    -- With underscores (LPCH format)
         "BONE LENGTH",                        -- Shorter fallback
     },
-
-    -- CT Abdomen studies: send all instances to MERCURE for AI processing
-    CT_ABDOMEN_PATTERNS = {
-        "CT ABDOMEN PELVIS W IV CONTRAST",
-        "CT_ABDOMEN_PELVIS_W_IV_CONTRAST",
-    },
-
+    
     -- Patterns to identify AI results coming back from MERCURE
     -- If ANY series matches ANY of these, it's considered AI_RESULT
     AI_RESULT_PATTERNS = {
