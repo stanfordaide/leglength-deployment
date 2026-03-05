@@ -88,6 +88,18 @@ For each segment (femur, tibia, total), two items are present when both sides ar
 | `RIGHT` | "Right {segment} is longer than left by {value} cm" |
 | `LEFT` | "Left {segment} is longer than right by {value} cm" |
 
+### 4.3 Display Text (Backup)
+
+Ready-to-display sentences for cases where Modlink cannot use template logic (e.g. conditional on `EQUAL`):
+
+| Code Value | Code Meaning | TextValue Examples |
+|-------------|--------------|---------------------|
+| `99_FEM_DIFF_DISPLAY` | Femur length difference (display text) | `"Femur lengths are equal"` / `"Right femur is longer than left by 0.2 cm"` / `"Left femur is longer than right by 0.3 cm"` |
+| `99_TIB_DIFF_DISPLAY` | Tibia length difference (display text) | `"Tibia lengths are equal"` / `"Right tibia is longer than left by 0.1 cm"` / etc. |
+| `99_TOT_DIFF_DISPLAY` | Total leg length difference (display text) | `"Total leg lengths are equal"` / `"Right leg is longer than left by 0.3 cm"` / etc. |
+
+**Modlink can use `99_*_DIFF_DISPLAY` directly** when template branching is not available. Prefer placeholders (4.2) when template logic is supported.
+
 ---
 
 ## 5. Headers Copied from Source Study
@@ -157,14 +169,18 @@ Pediatric Leg Length Results
 ├── 99_PLL_L_LGL  "Total left lower extremity"    = "47.2"
 ├── 99_FEM_DIFF_LONGER_SIDE  "Femur - longer side" = "RIGHT"
 ├── 99_FEM_DIFF_VALUE        "Femur diff value"   = "0.2"
+├── 99_FEM_DIFF_DISPLAY      "Femur (display)"     = "Right femur is longer than left by 0.2 cm"
 ├── 99_TIB_DIFF_LONGER_SIDE  "Tibia - longer side" = "RIGHT"
-├── 99_TIB_DIFF_VALUE        "Tibia diff value"   = "0.1"
+├── 99_TIB_DIFF_VALUE        "Tibia diff value"    = "0.1"
+├── 99_TIB_DIFF_DISPLAY      "Tibia (display)"     = "Right tibia is longer than left by 0.1 cm"
 ├── 99_TOT_DIFF_LONGER_SIDE  "Total - longer side" = "RIGHT"
-└── 99_TOT_DIFF_VALUE        "Total diff value"   = "0.3"
+├── 99_TOT_DIFF_VALUE        "Total diff value"   = "0.3"
+└── 99_TOT_DIFF_DISPLAY      "Total (display)"    = "Right leg is longer than left by 0.3 cm"
 ```
 
-**Modlink can construct sentences from placeholders**, e.g.:
-- `99_FEM_DIFF_LONGER_SIDE=RIGHT` + `99_FEM_DIFF_VALUE=0.2` → "Right femur is longer than left by 0.2 cm"
+**Modlink options:**
+- **Template:** `LONGER_SIDE` + `VALUE` → construct sentence (supports EQUAL/LEFT/RIGHT)
+- **Backup:** Use `99_*_DIFF_DISPLAY` directly when template logic is not available
 
 ---
 
@@ -175,7 +191,7 @@ Pediatric Leg Length Results
 - [ ] Modlink configured to accept SOP Class UID `1.2.840.10008.5.1.4.1.1.88.11` (Enhanced SR)
 - [ ] Mapping/template in Modlink to extract `STANFORD_AIDE` coded concepts (CodeValue, CodeMeaning, TextValue)
 - [ ] **Units:** Apply "cm" when displaying measurement values (values are numeric only)
-- [ ] **Sentence construction:** Use LONGER_SIDE + VALUE placeholders with segment name (femur/tibia/leg) to build comparison sentences
+- [ ] **Sentence construction:** Use LONGER_SIDE + VALUE placeholders, OR use 99_*_DIFF_DISPLAY as backup when template logic unavailable
 - [ ] Validation that StudyInstanceUID and AccessionNumber are preserved for linking to source study
 
 ---
