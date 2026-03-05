@@ -118,7 +118,7 @@ status:
 	@sudo docker images stanfordaide/pediatric-leglength --format "  {{.Repository}}:{{.Tag}}  ({{.Size}}, created {{.CreatedSince}})" 2>/dev/null || printf "  Image not built\n"
 	@printf "\n"
 
-start-all: mercure-start orthanc-start monitoring-start
+start-all: monitoring-start orthanc-start mercure-start
 	@printf "\n"
 	@printf "$(GREEN)✅ All services started!$(RESET)\n"
 	@printf "\n"
