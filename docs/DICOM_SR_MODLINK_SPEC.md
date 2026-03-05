@@ -148,16 +148,10 @@ The SR inherits these DICOM attributes from the original study (when present):
 - **Routing rule:** Instances with `Modality = SR` and `SeriesDescription` containing AI measurement patterns are sent to Modlink.
 - **Expected workflow:** Orthanc receives SR from MERCURE → routes SR to Modlink via C-STORE.
 
----
-
-## 8. File Naming and Storage
-
-- SR files are saved as `{SeriesID}_sr_output.dcm` in the MERCURE output directory.
-- They are then dispatched to the configured destinations, including Modlink.
 
 ---
 
-## 9. Example Content (Conceptual)
+## 8. Example Content (Conceptual)
 
 For a successful bilateral study, the SR ContentSequence (flat) might look like:
 
@@ -186,10 +180,9 @@ ContentSequence
 
 ---
 
-## 10. Modlink Configuration Checklist
+## 9. Modlink Configuration Checklist
 
-- [ ] Modlink AET configured in Orthanc (e.g. MODLINK / PSRTBONEAPP01)
-- [ ] Network connectivity and firewall rules for DICOM C-STORE to Modlink
+- [x] Modlink AET configured in Orthanc (e.g. MODLINKTEST)
 - [ ] Modlink configured to accept SOP Class UID `1.2.840.10008.5.1.4.1.1.88.11` (Enhanced SR)
 - [ ] Mapping/template in Modlink to extract `STANFORD_AIDE` coded concepts (CodeValue, CodeMeaning, TextValue)
 - [ ] **Units:** Apply "cm" when displaying measurement values (values are numeric only)
@@ -198,4 +191,3 @@ ContentSequence
 
 ---
 
-*Document generated from `mercure-pediatric-leglength` module. Last updated: 2025-03.*
