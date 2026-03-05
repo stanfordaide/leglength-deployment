@@ -343,10 +343,10 @@ class DicomProcessor:
         img_h, img_w = image_region.shape[:2]
         # Footer height scales with image for legible disclaimer text
         footer_scale = max(0.7, min(2.5, (img_h + img_w) / 1600.0))
-        footer_height = int(120 * footer_scale)  # Disclaimer + Right/Left total lengths
+        footer_height = int(160 * footer_scale)  # Totals + wrapped disclaimer (needs more height)
         visualization = np.zeros((img_h + footer_height, img_w, 3), dtype=np.uint8)
         visualization[:img_h, :] = image_region
-        visualization[img_h:, :] = (40, 40, 40)  # Dark footer background
+        visualization[img_h:, :] = (0, 0, 0)  # Black footer background
         
         # Draw keypoints on image
         self._draw_all_keypoints(visualization, results, scale)
@@ -422,62 +422,79 @@ class DicomProcessor:
         
         return visualization
 
+    def _wrap_text(self, text: str, font, font_scale: float, font_thickness: int, max_width: int) -> List[str]:
+        """Wrap text to fit within max_width. Returns list of lines."""
+        words = text.split()
+        lines = []
+        current_line = []
+        for word in words:
+            test_line = " ".join(current_line + [word])
+            (tw, _), _ = cv2.getTextSize(test_line, font, font_scale, font_thickness)
+            if tw <= max_width:
+                current_line.append(word)
+            else:
+                if current_line:
+                    lines.append(" ".join(current_line))
+                current_line = [word]
+        if current_line:
+            lines.append(" ".join(current_line))
+        return lines
+
     def _add_footer_panel(self, visualization: np.ndarray, img_h: int, img_w: int,
                           footer_height: int, total_lengths: dict, scale: float = 1.0):
-        """Add footer BELOW the image: AI disclaimer + Right/Left total leg lengths.
+        """Add footer BELOW the image: Right/Left total leg lengths, then wrapped disclaimer.
         
-        Font size scales with image dimensions for legibility across different resolutions.
+        Order: Totals first, line break, then disclaimer at bottom. Black background.
+        Font size scales with image dimensions for legibility.
         """
         font = cv2.FONT_HERSHEY_DUPLEX
         font_small = cv2.FONT_HERSHEY_SIMPLEX
         
-        # Scale footer text proportionally to image size (avg dimension / 800 = 1.0 at ~800px)
-        # Ensures legible text on small images (min 0.7) and scales up for large images
         img_scale = (img_w + img_h) / 1600.0
         img_scale = max(0.7, min(2.5, img_scale))
-        font_scale = 0.7 * img_scale   # Total lengths
-        font_scale_small = 0.6 * img_scale  # Disclaimer (longer text, slightly smaller)
+        font_scale = 0.75 * img_scale   # Total lengths
+        font_scale_disclaimer = 0.65 * img_scale  # Disclaimer (can be larger when wrapped)
         font_thickness = max(2, int(2.0 * img_scale))
         line_spacing = int(10 * img_scale)
         padding = int(20 * img_scale)
-        
-        # Build text lines: disclaimer + total lengths only
-        lines = []
-        lines.append(self.AI_DISCLAIMER)
-        lines.append("")
+        max_text_width = img_w - 2 * padding
+
+        # 1. Draw Right Total and Left Total first (top of footer)
+        y = img_h + padding
         right_total = total_lengths.get('PLL_R_LGL', None)
         left_total = total_lengths.get('PLL_L_LGL', None)
         if right_total is not None:
-            lines.append(f"Right Total Leg Length: {right_total:.1f} cm")
-        if left_total is not None:
-            lines.append(f"Left Total Leg Length: {left_total:.1f} cm")
-        
-        # Draw lines in footer region (y starts at img_h; putText uses baseline so we add th)
-        max_text_width = img_w - 2 * padding
-        y = img_h + padding
-        for line in lines:
-            if not line:
-                y += line_spacing // 2
-                continue
-            fs = font_scale_small if len(line) > 50 else font_scale
-            fnt = font_small if len(line) > 50 else font
-            (tw, th), _ = cv2.getTextSize(line, fnt, fs, font_thickness)
-            # Scale down font if text would overflow (keeps disclaimer legible on narrow images)
-            while tw > max_text_width and fs > 0.4:
-                fs *= 0.85
-                (tw, th), _ = cv2.getTextSize(line, fnt, fs, font_thickness)
+            line = f"Right Total Leg Length: {right_total:.1f} cm"
+            (tw, th), _ = cv2.getTextSize(line, font, font_scale, font_thickness)
             x = max(padding, (img_w - tw) // 2)
-            # putText y is baseline (bottom of text); use y+th so text top aligns at y
-            cv2.putText(visualization, line, (x, y + th), fnt, fs, (255, 255, 255), font_thickness, cv2.LINE_AA)
+            cv2.putText(visualization, line, (x, y + th), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
             y += th + line_spacing
-        
-        # Stanford AIDE watermark in footer bottom-right (scaled with image)
+        if left_total is not None:
+            line = f"Left Total Leg Length: {left_total:.1f} cm"
+            (tw, th), _ = cv2.getTextSize(line, font, font_scale, font_thickness)
+            x = max(padding, (img_w - tw) // 2)
+            cv2.putText(visualization, line, (x, y + th), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+            y += th + line_spacing
+
+        # 2. Line break, then wrapped disclaimer at bottom
+        y += line_spacing  # Extra gap before disclaimer
+        disclaimer_lines = self._wrap_text(
+            self.AI_DISCLAIMER, font_small, font_scale_disclaimer, font_thickness, max_text_width
+        )
+        for line in disclaimer_lines:
+            (tw, th), _ = cv2.getTextSize(line, font_small, font_scale_disclaimer, font_thickness)
+            x = max(padding, (img_w - tw) // 2)
+            cv2.putText(visualization, line, (x, y + th), font_small, font_scale_disclaimer,
+                       (255, 255, 255), font_thickness, cv2.LINE_AA)
+            y += th + line_spacing
+
+        # Stanford AIDE watermark in footer bottom-right
         watermark = "Stanford AIDE"
-        (ww, wh), _ = cv2.getTextSize(watermark, font_small, font_scale_small, font_thickness)
+        (ww, wh), _ = cv2.getTextSize(watermark, font_small, font_scale_disclaimer, font_thickness)
         wx = img_w - ww - int(15 * img_scale)
         wy = img_h + footer_height - int(8 * img_scale)
-        cv2.putText(visualization, watermark, (wx, wy), font_small, font_scale_small,
-                   (150, 150, 150), font_thickness, cv2.LINE_AA)
+        cv2.putText(visualization, watermark, (wx, wy), font_small, font_scale_disclaimer,
+                   (180, 180, 180), font_thickness, cv2.LINE_AA)
 
     def _draw_measurement_line(self, visualization: np.ndarray, p1: tuple, p2: tuple, measurement_name: str, scale: float = 1.0):
         """Draw professional measurement line with gradient effect."""
@@ -739,53 +756,58 @@ class DicomProcessor:
             text_item.ConceptNameCodeSequence[0].CodeValue = f"99_{name}"
             text_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
             
-            # Format text based on measurement name with 1 decimal place
+            # Format text based on measurement name - numeric value only (no units)
             if name == 'PLL_R_FEM':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Right femur length"
-                text = f"{data['centimeters']:.1f} cm"
+                text = f"{data['centimeters']:.1f}"
             elif name == 'PLL_R_TIB':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Right tibia length"
-                text = f"{data['centimeters']:.1f} cm"
+                text = f"{data['centimeters']:.1f}"
             elif name == 'PLL_R_LGL':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Total right lower extremity length"
-                text = f"{data['centimeters']:.1f} cm"
+                text = f"{data['centimeters']:.1f}"
             elif name == 'PLL_L_FEM':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Left femur length"
-                text = f"{data['centimeters']:.1f} cm"
+                text = f"{data['centimeters']:.1f}"
             elif name == 'PLL_L_TIB':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Left tibia length"
-                text = f"{data['centimeters']:.1f} cm"
+                text = f"{data['centimeters']:.1f}"
             elif name == 'PLL_L_LGL':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Total left lower extremity length"
-                text = f"{data['centimeters']:.1f} cm"
+                text = f"{data['centimeters']:.1f}"
             else:
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = f"{name} length"
-                text = f"{data['centimeters']:.1f} cm"
+                text = f"{data['centimeters']:.1f}"
 
             text_item.TextValue = text
             content_seq.append(text_item)
 
-        # Add difference measurements if both sides are available
+        # Add difference measurements as separate placeholders (for sentence construction)
         if all(k in results['measurements'] for k in ['PLL_R_FEM', 'PLL_L_FEM']):
             fem_diff = (results['measurements']['PLL_R_FEM']['centimeters'] - 
                          results['measurements']['PLL_L_FEM']['centimeters'])
             
-            # Femur difference value
-            diff_item = Dataset()
-            diff_item.RelationshipType = 'HAS PROPERTIES'
-            diff_item.ValueType = 'TEXT'
-            diff_item.ConceptNameCodeSequence = [Dataset()]
-            diff_item.ConceptNameCodeSequence[0].CodeValue = "99_FEM_DIFF_VAL"
-            diff_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            diff_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur Length Difference"
-            # Create descriptive text instead of negative values
-            if abs(fem_diff) < 0.1:  # Less than 1mm difference
-                diff_item.TextValue = "Femur lengths are equal"
-            elif fem_diff > 0:
-                diff_item.TextValue = f"Right femur is longer than left by {fem_diff:.1f} cm"
-            else:
-                diff_item.TextValue = f"Left femur is longer than right by {abs(fem_diff):.1f} cm"
-            content_seq.append(diff_item)
+            # 99_FEM_DIFF_LONGER_SIDE: which side is longer
+            side_item = Dataset()
+            side_item.RelationshipType = 'HAS PROPERTIES'
+            side_item.ValueType = 'TEXT'
+            side_item.ConceptNameCodeSequence = [Dataset()]
+            side_item.ConceptNameCodeSequence[0].CodeValue = "99_FEM_DIFF_LONGER_SIDE"
+            side_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            side_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur length - longer side"
+            side_item.TextValue = "EQUAL" if abs(fem_diff) < 0.1 else ("RIGHT" if fem_diff > 0 else "LEFT")
+            content_seq.append(side_item)
+            
+            # 99_FEM_DIFF_VALUE: absolute difference (numeric only, no units)
+            val_item = Dataset()
+            val_item.RelationshipType = 'HAS PROPERTIES'
+            val_item.ValueType = 'TEXT'
+            val_item.ConceptNameCodeSequence = [Dataset()]
+            val_item.ConceptNameCodeSequence[0].CodeValue = "99_FEM_DIFF_VALUE"
+            val_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            val_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur length difference value"
+            val_item.TextValue = f"{abs(fem_diff):.1f}"
+            content_seq.append(val_item)
 
             # # Femur discrepancy description
             # desc_item = Dataset()
@@ -808,22 +830,27 @@ class DicomProcessor:
             tib_diff = (results['measurements']['PLL_R_TIB']['centimeters'] - 
                          results['measurements']['PLL_L_TIB']['centimeters'])
             
-            # Tibia difference value
-            diff_item = Dataset()
-            diff_item.RelationshipType = 'HAS PROPERTIES'
-            diff_item.ValueType = 'TEXT'
-            diff_item.ConceptNameCodeSequence = [Dataset()]
-            diff_item.ConceptNameCodeSequence[0].CodeValue = "99_TIB_DIFF_VAL"
-            diff_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            diff_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia Length Difference"
-            # Create descriptive text instead of negative values
-            if abs(tib_diff) < 0.1:  # Less than 1mm difference
-                diff_item.TextValue = "Tibia lengths are equal"
-            elif tib_diff > 0:
-                diff_item.TextValue = f"Right tibia is longer than left by {tib_diff:.1f} cm"
-            else:
-                diff_item.TextValue = f"Left tibia is longer than right by {abs(tib_diff):.1f} cm"
-            content_seq.append(diff_item)
+            # 99_TIB_DIFF_LONGER_SIDE
+            side_item = Dataset()
+            side_item.RelationshipType = 'HAS PROPERTIES'
+            side_item.ValueType = 'TEXT'
+            side_item.ConceptNameCodeSequence = [Dataset()]
+            side_item.ConceptNameCodeSequence[0].CodeValue = "99_TIB_DIFF_LONGER_SIDE"
+            side_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            side_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia length - longer side"
+            side_item.TextValue = "EQUAL" if abs(tib_diff) < 0.1 else ("RIGHT" if tib_diff > 0 else "LEFT")
+            content_seq.append(side_item)
+            
+            # 99_TIB_DIFF_VALUE
+            val_item = Dataset()
+            val_item.RelationshipType = 'HAS PROPERTIES'
+            val_item.ValueType = 'TEXT'
+            val_item.ConceptNameCodeSequence = [Dataset()]
+            val_item.ConceptNameCodeSequence[0].CodeValue = "99_TIB_DIFF_VALUE"
+            val_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            val_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia length difference value"
+            val_item.TextValue = f"{abs(tib_diff):.1f}"
+            content_seq.append(val_item)
 
             # # Tibia discrepancy description
             # desc_item = Dataset()
@@ -846,22 +873,27 @@ class DicomProcessor:
             total_diff = (results['measurements']['PLL_R_LGL']['centimeters'] - 
                            results['measurements']['PLL_L_LGL']['centimeters'])
             
-            # Total difference value
-            diff_item = Dataset()
-            diff_item.RelationshipType = 'HAS PROPERTIES'
-            diff_item.ValueType = 'TEXT'
-            diff_item.ConceptNameCodeSequence = [Dataset()]
-            diff_item.ConceptNameCodeSequence[0].CodeValue = "99_TOT_DIFF_VAL"
-            diff_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            diff_item.ConceptNameCodeSequence[0].CodeMeaning = "Total Lower Extremity Length Difference"
-            # Create descriptive text instead of negative values
-            if abs(total_diff) < 0.1:  # Less than 1mm difference
-                diff_item.TextValue = "Total leg lengths are equal"
-            elif total_diff > 0:
-                diff_item.TextValue = f"Right leg is longer than left by {total_diff:.1f} cm"
-            else:
-                diff_item.TextValue = f"Left leg is longer than right by {abs(total_diff):.1f} cm"
-            content_seq.append(diff_item)
+            # 99_TOT_DIFF_LONGER_SIDE
+            side_item = Dataset()
+            side_item.RelationshipType = 'HAS PROPERTIES'
+            side_item.ValueType = 'TEXT'
+            side_item.ConceptNameCodeSequence = [Dataset()]
+            side_item.ConceptNameCodeSequence[0].CodeValue = "99_TOT_DIFF_LONGER_SIDE"
+            side_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            side_item.ConceptNameCodeSequence[0].CodeMeaning = "Total leg length - longer side"
+            side_item.TextValue = "EQUAL" if abs(total_diff) < 0.1 else ("RIGHT" if total_diff > 0 else "LEFT")
+            content_seq.append(side_item)
+            
+            # 99_TOT_DIFF_VALUE
+            val_item = Dataset()
+            val_item.RelationshipType = 'HAS PROPERTIES'
+            val_item.ValueType = 'TEXT'
+            val_item.ConceptNameCodeSequence = [Dataset()]
+            val_item.ConceptNameCodeSequence[0].CodeValue = "99_TOT_DIFF_VALUE"
+            val_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            val_item.ConceptNameCodeSequence[0].CodeMeaning = "Total leg length difference value"
+            val_item.TextValue = f"{abs(total_diff):.1f}"
+            content_seq.append(val_item)
 
             # # Total discrepancy description
             # desc_item = Dataset()
