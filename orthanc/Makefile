@@ -311,5 +311,11 @@ seed-modalities:
 	 PORT=$${PORT:-9011} && \
 	 curl -sf -u "$$USER:$$PASS" -X PUT "http://localhost:$$PORT/modalities/MODLINK" \
 		-H "Content-Type: application/json" -d '{"AET":"PSRTBONEAPP01","Host":"10.251.201.59","Port":104}' && echo "  ✅ MODLINK" || echo "  ❌ MODLINK"
+	@USER=$$(cat .env | grep "^ORTHANC_USERNAME=" | cut -d= -f2) && \
+	 PASS=$$(cat .env | grep "^ORTHANC_PASSWORD=" | cut -d= -f2) && \
+	 PORT=$$(cat .env | grep "^ORTHANC_WEB_PORT=" | cut -d= -f2) && \
+	 PORT=$${PORT:-9011} && \
+	 curl -sf -u "$$USER:$$PASS" -X PUT "http://localhost:$$PORT/modalities/MODLINKTEST" \
+		-H "Content-Type: application/json" -d '{"AET":"MODLINKTEST","Host":"10.251.201.59","Port":1027}' && echo "  ✅ MODLINKTEST" || echo "  ❌ MODLINKTEST"
 	@echo ""
 	@echo "Done! Verify with: curl -s -u user:pass http://localhost:9011/modalities | jq"
