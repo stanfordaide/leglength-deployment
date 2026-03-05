@@ -33,13 +33,15 @@ All coded concepts use:
 
 ## 3. Content Structure (Hierarchy)
 
+Flat structure (Bunkerhill-style): content items directly in `ContentSequence`, no container wrapper.
+
 ```
-ContentSequence
-└── [1] CONTAINER: "Pediatric Leg Length Results" (PLL_RESULTS)
-    └── ContentSequence (flat list of TEXT items)
-        ├── Measurement items (99_PLL_R_FEM, 99_PLL_R_TIB, etc.) — numeric values only
-        ├── Difference placeholders (LONGER_SIDE + VALUE per segment) [when both sides available]
-        └── (Issues container is currently disabled)
+ContentSequence (flat list of TEXT items)
+├── 99_PLL_R_FEM, 99_PLL_R_TIB, 99_PLL_R_LGL...
+├── 99_PLL_L_FEM, 99_PLL_L_TIB, 99_PLL_L_LGL
+├── 99_FEM_DIFF_LONGER_SIDE, 99_FEM_DIFF_VALUE, 99_FEM_DIFF_DISPLAY [when both sides]
+├── 99_TIB_DIFF_*...
+└── 99_TOT_DIFF_*...
 ```
 
 ---
@@ -157,10 +159,10 @@ The SR inherits these DICOM attributes from the original study (when present):
 
 ## 9. Example Content (Conceptual)
 
-For a successful bilateral study, the SR content might look like:
+For a successful bilateral study, the SR ContentSequence (flat) might look like:
 
 ```
-Pediatric Leg Length Results
+ContentSequence
 ├── 99_PLL_R_FEM  "Right femur length"            = "25.4"
 ├── 99_PLL_R_TIB  "Right tibia length"             = "22.1"
 ├── 99_PLL_R_LGL  "Total right lower extremity"    = "47.5"

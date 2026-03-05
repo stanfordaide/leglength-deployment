@@ -1764,39 +1764,11 @@ class DicomProcessor:
             results=results
         )
         
-        # Create a single container for all content
-        container = Dataset()
-        container.RelationshipType = 'CONTAINS'
-        container.ValueType = 'CONTAINER'
-        container.ContinuityOfContent = 'SEPARATE'
-        container.ConceptNameCodeSequence = [Dataset()]
-        container.ConceptNameCodeSequence[0].CodeValue = "PLL_RESULTS"
-        container.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-        container.ConceptNameCodeSequence[0].CodeMeaning = 'Pediatric Leg Length Results'
-        
-        # Initialize the ContentSequence
+        # Flat structure (Bunkerhill-style): content items directly in ContentSequence, no container wrapper
         content_seq = []
-        
-        # Add measurements
         content_seq = self._create_measurements_container(content_seq, results, femur_threshold=config['femur_threshold'], tibia_threshold=config['tibia_threshold'], total_threshold=config['total_threshold'])
         
-        # # # Add a separator item
-        # # separator = Dataset()
-        # # separator.RelationshipType = 'CONTAINS'
-        # # separator.ValueType = 'TEXT'
-        # # separator.ConceptNameCodeSequence = [Dataset()]
-        # # separator.ConceptNameCodeSequence[0].CodeValue = "99_SEPARATOR"
-        # # separator.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-        # # separator.ConceptNameCodeSequence[0].CodeMeaning = "Measurement Issues"
-        # # separator.TextValue = "Measurement Issues"
-        # # content_seq.append(separator)
-        
-        # # Add issues
-        # content_seq = self._create_issues_container(content_seq, results)
-        
-        # Set the content sequence
-        container.ContentSequence = content_seq
-        new_ds.ContentSequence = [container]
+        new_ds.ContentSequence = content_seq
         
         return new_ds
 
