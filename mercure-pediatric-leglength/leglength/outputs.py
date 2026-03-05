@@ -302,9 +302,8 @@ class DicomProcessor:
     def _create_visualization_image(self, results: dict, dicom_path: str) -> np.ndarray:
         """Create the visualization image with measurements and annotations.
         
-        Image content (keypoints, measurement lines) is drawn on the image.
-        All text (disclaimer, measurement values) is placed in a footer panel BELOW the image
-        to avoid blocking the clinical image.
+        Individual segment labels (femur, tibia cm values) overlay on the image.
+        AI disclaimer and total leg lengths (Right/Left) are in a footer BELOW the image.
         """
         self.logger.info("=== Starting visualization creation ===")
         
@@ -340,21 +339,22 @@ class DicomProcessor:
         # Calculate scale factor based on image dimensions
         scale = self._get_scale_factor(image_region)
 
-        # Extend canvas: add footer panel BELOW the image (no overlay on clinical image)
+        # Extend canvas: footer BELOW image for disclaimer + total lengths only
         img_h, img_w = image_region.shape[:2]
-        footer_height = int(180 * scale)  # Space for disclaimer + measurements (below image, no overlay)
+        # Footer height scales with image for legible disclaimer text
+        footer_scale = max(0.7, min(2.5, (img_h + img_w) / 1600.0))
+        footer_height = int(120 * footer_scale)  # Disclaimer + Right/Left total lengths
         visualization = np.zeros((img_h + footer_height, img_w, 3), dtype=np.uint8)
         visualization[:img_h, :] = image_region
         visualization[img_h:, :] = (40, 40, 40)  # Dark footer background
         
-        # Draw keypoints and measurement lines ON the image only (no text overlay)
+        # Draw keypoints on image
         self._draw_all_keypoints(visualization, results, scale)
         
         measurements_processed = 0
-        segment_measurements = {}  # For footer: name -> cm
         total_lengths = {}  # For footer: PLL_R_LGL, PLL_L_LGL
         
-        # Draw measurement lines and points on image (NO labels - those go in footer)
+        # Draw measurement lines, points, and individual labels (overlay on image)
         for measure in self.config['measurements']:
             name = measure['name']
             join_points = measure['join_points']
@@ -368,25 +368,26 @@ class DicomProcessor:
                 p1 = (int(points['start']['x']), int(points['start']['y']))
                 p2 = (int(points['end']['x']), int(points['end']['y']))
                 
-                # Skip drawing lines for total leg length measurements
                 is_total_length = name in ['PLL_R_LGL', 'PLL_L_LGL']
-                
-                # Store for footer display
                 if is_total_length:
                     total_lengths[name] = results['measurements'][name]['centimeters']
-                    continue  # Skip drawing lines for total lengths
-                
-                segment_measurements[name] = results['measurements'][name]['centimeters']
+                    continue
                 
                 # Validate coordinates are within image bounds
                 if not (0 <= p1[0] < img_w and 0 <= p1[1] < img_h and 0 <= p2[0] < img_w and 0 <= p2[1] < img_h):
                     p1 = (max(0, min(img_w-1, p1[0])), max(0, min(img_h-1, p1[1])))
                     p2 = (max(0, min(img_w-1, p2[0])), max(0, min(img_h-1, p2[1])))
-                # Draw measurement line and points on image (no label overlay)
+                
+                # Draw line, points, and label overlay (individual segment measurements)
                 self._draw_measurement_line(visualization, p1, p2, name, scale)
                 for i, (point, point_id) in enumerate(zip([p1, p2], join_points)):
                     uncertainty = self._get_point_uncertainty(point_id, results)
                     self._draw_measurement_point(visualization, point, uncertainty, i == 0, scale)
+                
+                mid_point = (int((p1[0] + p2[0]) / 2), int((p1[1] + p2[1]) / 2))
+                distance_cm = results['measurements'][name]['centimeters']
+                measurement_uncertainty = self._get_localization_uncertainty(name, results)
+                self._draw_measurement_label(visualization, mid_point, distance_cm, name, measurement_uncertainty, scale)
                 
                 measurements_processed += 1
                 
@@ -397,9 +398,8 @@ class DicomProcessor:
         
         self.logger.info(f"Processed {measurements_processed} measurements")
         
-        # Add footer BELOW image: disclaimer + all measurements (does not overlay on image)
-        self._add_footer_panel(visualization, img_h, img_w, footer_height,
-                              segment_measurements, total_lengths, scale)
+        # Footer BELOW image: disclaimer + Right/Left total lengths only
+        self._add_footer_panel(visualization, img_h, img_w, footer_height, total_lengths, scale)
         
         # Save debug image with DICOM stem prefix
         from pathlib import Path
@@ -423,36 +423,28 @@ class DicomProcessor:
         return visualization
 
     def _add_footer_panel(self, visualization: np.ndarray, img_h: int, img_w: int,
-                          footer_height: int, segment_measurements: dict,
-                          total_lengths: dict, scale: float = 1.0):
-        """Add footer panel BELOW the image with disclaimer and measurements (no overlay on image)."""
+                          footer_height: int, total_lengths: dict, scale: float = 1.0):
+        """Add footer BELOW the image: AI disclaimer + Right/Left total leg lengths.
+        
+        Font size scales with image dimensions for legibility across different resolutions.
+        """
         font = cv2.FONT_HERSHEY_DUPLEX
         font_small = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.55 * scale
-        font_scale_small = 0.45 * scale
-        font_thickness = max(1, int(1.5 * scale))
-        line_spacing = int(6 * scale)
-        padding = int(12 * scale)
         
-        # Build all text lines for footer
+        # Scale footer text proportionally to image size (avg dimension / 800 = 1.0 at ~800px)
+        # Ensures legible text on small images (min 0.7) and scales up for large images
+        img_scale = (img_w + img_h) / 1600.0
+        img_scale = max(0.7, min(2.5, img_scale))
+        font_scale = 0.7 * img_scale   # Total lengths
+        font_scale_small = 0.6 * img_scale  # Disclaimer (longer text, slightly smaller)
+        font_thickness = max(2, int(2.0 * img_scale))
+        line_spacing = int(10 * img_scale)
+        padding = int(20 * img_scale)
+        
+        # Build text lines: disclaimer + total lengths only
         lines = []
-        # 1. AI disclaimer (DICOM SC only)
         lines.append(self.AI_DISCLAIMER)
         lines.append("")
-        
-        # 2. Segment measurements
-        name_to_label = {
-            'PLL_R_FEM': 'Right Femur', 'PLL_R_TIB': 'Right Tibia',
-            'PLL_L_FEM': 'Left Femur', 'PLL_L_TIB': 'Left Tibia',
-        }
-        for name in ['PLL_R_FEM', 'PLL_R_TIB', 'PLL_L_FEM', 'PLL_L_TIB']:
-            if name in segment_measurements:
-                label = name_to_label.get(name, name)
-                lines.append(f"{label}: {segment_measurements[name]:.1f} cm")
-        if segment_measurements:
-            lines.append("")
-        
-        # 3. Total lengths
         right_total = total_lengths.get('PLL_R_LGL', None)
         left_total = total_lengths.get('PLL_L_LGL', None)
         if right_total is not None:
@@ -461,25 +453,29 @@ class DicomProcessor:
             lines.append(f"Left Total Leg Length: {left_total:.1f} cm")
         
         # Draw lines in footer region (y starts at img_h; putText uses baseline so we add th)
+        max_text_width = img_w - 2 * padding
         y = img_h + padding
         for line in lines:
             if not line:
                 y += line_spacing // 2
                 continue
-            # Use smaller font for long disclaimer
             fs = font_scale_small if len(line) > 50 else font_scale
             fnt = font_small if len(line) > 50 else font
             (tw, th), _ = cv2.getTextSize(line, fnt, fs, font_thickness)
+            # Scale down font if text would overflow (keeps disclaimer legible on narrow images)
+            while tw > max_text_width and fs > 0.4:
+                fs *= 0.85
+                (tw, th), _ = cv2.getTextSize(line, fnt, fs, font_thickness)
             x = max(padding, (img_w - tw) // 2)
             # putText y is baseline (bottom of text); use y+th so text top aligns at y
             cv2.putText(visualization, line, (x, y + th), fnt, fs, (255, 255, 255), font_thickness, cv2.LINE_AA)
             y += th + line_spacing
         
-        # Stanford AIDE watermark in footer bottom-right
+        # Stanford AIDE watermark in footer bottom-right (scaled with image)
         watermark = "Stanford AIDE"
         (ww, wh), _ = cv2.getTextSize(watermark, font_small, font_scale_small, font_thickness)
-        wx = img_w - ww - int(15 * scale)
-        wy = img_h + footer_height - int(8 * scale)
+        wx = img_w - ww - int(15 * img_scale)
+        wy = img_h + footer_height - int(8 * img_scale)
         cv2.putText(visualization, watermark, (wx, wy), font_small, font_scale_small,
                    (150, 150, 150), font_thickness, cv2.LINE_AA)
 
