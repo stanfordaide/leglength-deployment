@@ -33,7 +33,7 @@ local Matcher = {}
 -- ─────────────────────────────────────────────────────────────────────────────────
 
 Matcher.STUDY_TYPES = {
-    ORIGINAL = "ORIGINAL",     -- Needs AI processing
+    LEG_LENGTH = "LEG_LENGTH",     -- Needs AI processing
     AI_RESULT = "AI_RESULT",   -- Has AI output, route to final destinations
     CT_ABDOMEN = "CT_ABDOMEN", -- CT Abdomen study, route to LPCH/LPCHT
     UNMATCHED = "UNMATCHED",   -- Doesn't match any rules

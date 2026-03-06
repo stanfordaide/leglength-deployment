@@ -262,10 +262,16 @@ function Router.execute(studyId, matchResult)
     
     -- Route based on study type
     local studyType = matchResult.studyType
+
+    if studyType == Matcher.STUDY_TYPES.CT_ABDOMEN then
+        -- CT Abdomen study → send to LPCH/LPCHT
+        Log.info("Routing CT_ABDOMEN study to AI", { studyId = studyId })
+        return routeToAI(studyId, matchResult)
+    end
     
-    if studyType == Matcher.STUDY_TYPES.ORIGINAL then
+    if studyType == Matcher.STUDY_TYPES.LEG_LENGTH then
         -- Fresh study → send to MERCURE for AI
-        Log.info("Routing ORIGINAL study to AI", { studyId = studyId })
+        Log.info("Routing LEG_LENGTH study to AI", { studyId = studyId })
         return routeToAI(studyId, matchResult)
         
     elseif studyType == Matcher.STUDY_TYPES.AI_RESULT then
