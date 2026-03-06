@@ -336,6 +336,16 @@ function Matcher.analyze(studyId, tags, instances)
         result.reason = "matches_ct_abdomen_pattern"
         result.matchedPattern = pattern
         
+        -- For CT Abdomen, we send the whole study (not just one instance)
+        -- selectedInstances.forAI_study will be handled specially in router
+        result.selectedInstances = { forAI_study = true }
+        
+        Log.info("Study matched CT abdomen pattern", {
+            studyId = studyId,
+            pattern = pattern,
+            sendWholeStudy = true,
+        })
+        
         return result
     end
     

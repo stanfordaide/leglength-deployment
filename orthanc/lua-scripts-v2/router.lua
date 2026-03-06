@@ -156,6 +156,33 @@ local function routeToAI(studyId, matchResult)
         return true
     end
     
+    local destination = getDestination("MERCURE")
+    
+    -- CT_ABDOMEN: Send whole study
+    if matchResult.selectedInstances and matchResult.selectedInstances.forAI_study then
+        Log.info("Sending whole study to AI", { studyId = studyId })
+        local success, jobId = Utils.try(function()
+            return SendToModality(studyId, destination)
+        end)
+        
+        if not success then
+            Log.error("Failed to send study to AI", {
+                studyId = studyId,
+                destination = destination,
+                error = tostring(jobId):sub(1, 200),
+            })
+            return false
+        else
+            Log.info("Study queued for AI", {
+                studyId = studyId,
+                destination = destination,
+                jobId = tostring(jobId),
+            })
+            return true
+        end
+    end
+    
+    -- LEG_LENGTH: Send single instance
     local instance = matchResult.selectedInstances and matchResult.selectedInstances.forAI
     if not instance then
         Log.warn("No instance selected for AI", { studyId = studyId })
@@ -168,7 +195,6 @@ local function routeToAI(studyId, matchResult)
         return false
     end
     
-    local destination = getDestination("MERCURE")
     local success, jobId = sendInstance(studyId, instanceId, destination)
     
     -- For MERCURE sends, also register as a pending job (DISABLED - tracking disabled)
