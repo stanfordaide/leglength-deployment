@@ -150,7 +150,12 @@ end
 --
 -- Route ORIGINAL study to MERCURE for AI processing
 --
-local function routeToAI(studyId, matchResult)
+-- @param studyId: string - Orthanc study ID
+-- @param matchResult: table - Result from Matcher.analyze()
+-- @param instances: table - All instances in the study (needed for whole-study sends)
+-- @return success: boolean
+--
+local function routeToAI(studyId, matchResult, instances)
     if not isAIEnabled() then
         Log.info("AI processing disabled, skipping MERCURE", { studyId = studyId })
         return true
@@ -158,25 +163,24 @@ local function routeToAI(studyId, matchResult)
     
     local destination = getDestination("MERCURE")
     
-    -- CT_ABDOMEN: Send whole study
+    -- CT_ABDOMEN: Send whole study (all instances)
     if matchResult.selectedInstances and matchResult.selectedInstances.forAI_study then
-        Log.info("Sending whole study to AI", { studyId = studyId })
-        local success, jobId = Utils.try(function()
-            return SendToModality(studyId, destination)
-        end)
+        Log.info("Sending whole study to AI", { studyId = studyId, instanceCount = #(instances or {}) })
+        local successCount, failCount = sendInstances(studyId, instances, destination)
         
-        if not success then
-            Log.error("Failed to send study to AI", {
+        if failCount > 0 then
+            Log.error("Some instances failed to send to AI", {
                 studyId = studyId,
                 destination = destination,
-                error = tostring(jobId):sub(1, 200),
+                sent = successCount,
+                failed = failCount,
             })
-            return false
+            return successCount > 0  -- Partial success is still a problem
         else
-            Log.info("Study queued for AI", {
+            Log.info("All instances queued for AI", {
                 studyId = studyId,
                 destination = destination,
-                jobId = tostring(jobId),
+                count = successCount,
             })
             return true
         end
@@ -263,9 +267,10 @@ end
 --
 -- @param studyId: string - Orthanc study ID
 -- @param matchResult: table - Result from Matcher.analyze()
+-- @param instances: table - All instances in the study (needed for whole-study sends)
 -- @return success: boolean
 --
-function Router.execute(studyId, matchResult)
+function Router.execute(studyId, matchResult, instances)
     -- Safety checks
     if not matchResult then
         Log.warn("Router.execute called with nil matchResult", { studyId = studyId })
@@ -290,15 +295,15 @@ function Router.execute(studyId, matchResult)
     local studyType = matchResult.studyType
 
     if studyType == Matcher.STUDY_TYPES.CT_ABDOMEN then
-        -- CT Abdomen study → send to LPCH/LPCHT
+        -- CT Abdomen study → send whole study to MERCURE for AI
         Log.info("Routing CT_ABDOMEN study to AI", { studyId = studyId })
-        return routeToAI(studyId, matchResult)
+        return routeToAI(studyId, matchResult, instances)
     end
     
     if studyType == Matcher.STUDY_TYPES.LEG_LENGTH then
-        -- Fresh study → send to MERCURE for AI
+        -- Fresh study → send single instance to MERCURE for AI
         Log.info("Routing LEG_LENGTH study to AI", { studyId = studyId })
-        return routeToAI(studyId, matchResult)
+        return routeToAI(studyId, matchResult, instances)
         
     elseif studyType == Matcher.STUDY_TYPES.AI_RESULT then
         -- AI result → send to final destinations

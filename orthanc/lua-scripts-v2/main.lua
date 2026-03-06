@@ -194,7 +194,7 @@ function OnStableStudy(studyId, tags, metadata, origin)
     
     -- Execute routing
     if matchResult.shouldRoute then
-        local success = Router.execute(studyId, matchResult)
+        local success = Router.execute(studyId, matchResult, instances)
         
         if success then
             Log.info("Routing completed successfully", { studyId = studyId })
