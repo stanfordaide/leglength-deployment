@@ -242,9 +242,10 @@ local function routeToFinalDestinations(studyId, matchResult)
     if #sr > 0 then
         Log.info("Routing Structured Reports", { count = #sr })
         
-        local s, f = sendInstances(studyId, sr, getDestination("MODLINK"))
-        totalSuccess = totalSuccess + s
-        totalFail = totalFail + f
+        local s1, f1 = sendInstances(studyId, sr, getDestination("MODLINK"))
+        local s2, f2 = sendInstances(studyId, sr, getDestination("MODLINKTEST"))
+        totalSuccess = totalSuccess + s1 + s2
+        totalFail = totalFail + f1 + f2
     else
         Log.debug("No Structured Report instances to route", { studyId = studyId })
     end
