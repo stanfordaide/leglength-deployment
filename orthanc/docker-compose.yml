@@ -54,7 +54,7 @@ services:
       - leglength-network
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8042/system > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8042' && exit 0 || exit 1"]
       interval: 30s
       timeout: 15s
       retries: 5

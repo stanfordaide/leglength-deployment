@@ -304,7 +304,7 @@ function Matcher.analyze(studyId, tags, instances)
         end
         
         result.shouldRoute = true
-        result.studyType = Matcher.STUDY_TYPES.ORIGINAL
+        result.studyType = Matcher.STUDY_TYPES.LEG_LENGTH
         result.reason = "matches_bone_length_pattern"
         result.matchedPattern = pattern
         
