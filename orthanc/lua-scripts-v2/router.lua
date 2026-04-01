@@ -301,6 +301,12 @@ function Router.execute(studyId, matchResult, instances)
         return routeToAI(studyId, matchResult, instances)
     end
     
+    if studyType == Matcher.STUDY_TYPES.FETAL_SVRTK then
+        -- Fetal SVRTK study → send whole study to MERCURE for AI
+        Log.info("Routing FETAL_SVRTK study to AI", { studyId = studyId })
+        return routeToAI(studyId, matchResult, instances)
+    end
+    
     if studyType == Matcher.STUDY_TYPES.LEG_LENGTH then
         -- Fresh study → send single instance to MERCURE for AI
         Log.info("Routing LEG_LENGTH study to AI", { studyId = studyId })
