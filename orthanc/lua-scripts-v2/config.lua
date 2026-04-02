@@ -7,7 +7,8 @@
 --   Change settings here, not scattered throughout code.
 --
 -- HOW ORTHANC LOADS THIS:
---   This file is loaded by main.lua using: dofile('/path/to/config.lua')
+--   This file is GENERATED from config.lua.template during 'make setup'
+--   It is loaded by main.lua using: dofile('/path/to/config.lua')
 --   It returns a table that main.lua stores as `Config`
 --
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -23,14 +24,9 @@ local Config = {}
 Config.API = {
     -- Base URL for the workflow tracking API
     -- The API runs in the monitoring stack on port 9031
-    -- We use host.docker.internal to reach it from inside Docker
-    -- 
-    -- To verify: docker exec orthanc-server curl http://host.docker.internal:9031/health
-    -- 
-    -- NOTE: This can be overridden via environment variable WORKFLOW_API_URL
-    --       Set in orthanc/.env if needed
+    -- Generated from config.env WORKFLOW_API_URL during setup
     --
-    BASE_URL = os.getenv("WORKFLOW_API_URL") or "http://host.docker.internal:9031",
+    BASE_URL = "http://workflow-api:9031",
     
     -- Specific endpoints (built from BASE_URL)
     -- These are defined here so you can see what's available
@@ -96,6 +92,25 @@ Config.MATCHING = {
     CT_ABDOMEN_PATTERNS = {
         "CT ABDOMEN PELVIS W IV CONTRAST",
         "CT_ABDOMEN_PELVIS_W_IV_CONTRAST",
+    },
+
+    -- Fetal MRI studies for SVRTK processing (based on working autosend_svrtk_fetal.lua)
+    FETAL_SVRTK_PATTERNS = {
+        "SSFSEX",           -- Single Shot Fast Spin Echo (corrected from SSFSE)
+        "SSFSE",            -- Legacy compatibility 
+        "FIESTA",           -- Fast Imaging Employing Steady-state Acquisition
+        "T2",               -- T2-weighted sequences
+        "TSE",              -- Turbo Spin Echo
+        "HASTE",            -- Half-Fourier Acquisition Single-shot Turbo spin Echo
+        "TRUFI",            -- True Fast Imaging with Steady State Precession
+        "BALANCED FFE",     -- Balanced Fast Field Echo
+        "FETAL",            -- General fetal keyword
+        "UTERUS",           -- Uterine imaging
+        "BRAIN",            -- Fetal brain
+        "BODY",             -- Fetal body
+        "OBSTETRIC",        -- Obstetric studies
+        "PREGNANCY",        -- Pregnancy-related
+        "GESTATIONAL",      -- Gestational studies
     },
     
     -- Patterns to identify AI results coming back from MERCURE
@@ -181,8 +196,8 @@ Config.FEATURES = {
     -- Master switch: if false, no routing happens (for maintenance)
     ROUTING_ENABLED = true,
     
-    -- Track workflows in database? (DISABLED - will use Prometheus metrics instead)
-    TRACKING_ENABLED = false,
+    -- Track workflows in database?
+    TRACKING_ENABLED = true,
     
     -- Send to AI (MERCURE)?
     AI_PROCESSING_ENABLED = true,

@@ -33,10 +33,11 @@ local Matcher = {}
 -- ─────────────────────────────────────────────────────────────────────────────────
 
 Matcher.STUDY_TYPES = {
-    LEG_LENGTH = "LEG_LENGTH",     -- Needs AI processing
-    AI_RESULT = "AI_RESULT",   -- Has AI output, route to final destinations
-    CT_ABDOMEN = "CT_ABDOMEN", -- CT Abdomen study, route to LPCH/LPCHT
-    UNMATCHED = "UNMATCHED",   -- Doesn't match any rules
+    LEG_LENGTH = "LEG_LENGTH",       -- Needs AI processing
+    FETAL_SVRTK = "FETAL_SVRTK",     -- Fetal MRI for SVRTK reconstruction
+    AI_RESULT = "AI_RESULT",         -- Has AI output, route to final destinations
+    CT_ABDOMEN = "CT_ABDOMEN",       -- CT Abdomen study, route to LPCH/LPCHT
+    UNMATCHED = "UNMATCHED",         -- Doesn't match any rules
 }
 
 -- ─────────────────────────────────────────────────────────────────────────────────
@@ -75,6 +76,43 @@ local function matchesCTAbdomenStudy(studyDescription)
     end
     
     return false, nil
+end
+
+--
+-- Check if study description matches fetal SVRTK patterns
+--
+local function matchesFetalSvrtkStudy(studyDescription)
+    if not studyDescription then return false, nil end
+
+    local patterns = Config.MATCHING and Config.MATCHING.FETAL_SVRTK_PATTERNS or {}
+    local upperDesc = Utils.upper(studyDescription)
+
+    for _, pattern in ipairs(patterns) do
+        if upperDesc:find(Utils.upper(pattern)) then
+            return true, pattern
+        end
+    end
+
+    return false, nil
+end
+
+--
+-- Check if any instance is an SVRTK reconstruction output
+-- Detects series descriptions like:
+--   'SVRTK FIESTA Brain Reconstruction'
+--   'SVRTK SSFSEx Brain Reconstruction'
+--   'SVRTK FIESTA Body Reconstruction'
+--   'SVRTK SSFSEx Body Reconstruction'
+--
+local function hasSVRTKResultMarker(instances)
+    for _, instance in ipairs(instances or {}) do
+        local seriesDesc = Utils.safeGet(instance, "SeriesDescription", "")
+        if Utils.containsIgnoreCase(seriesDesc, "SVRTK") then
+            Log.info("SVRTK result marker found", { check = "SeriesDescription", value = seriesDesc })
+            return true
+        end
+    end
+    return false
 end
 
 --
@@ -349,6 +387,39 @@ function Matcher.analyze(studyId, tags, instances)
         return result
     end
     
+    -- ─────────────────────────────────────────────────────────────────────────────
+    -- CHECK 4: Does this match fetal SVRTK patterns?
+    -- ─────────────────────────────────────────────────────────────────────────────
+    local fetalMatches, fetalPattern = matchesFetalSvrtkStudy(studyDesc)
+    if fetalMatches then
+        -- SAFETY: Check if study already contains SVRTK reconstruction output
+        -- This prevents infinite re-processing loops when results come back to Orthanc
+        if hasSVRTKResultMarker(instances) then
+            Log.info("Study matches fetal pattern but ALREADY has SVRTK output - skipping", {
+                studyId = studyId,
+                pattern = fetalPattern,
+            })
+            result.reason = "already_has_svrtk_output"
+            return result
+        end
+
+        result.shouldRoute = true
+        result.studyType = Matcher.STUDY_TYPES.FETAL_SVRTK
+        result.reason = "matches_fetal_svrtk_pattern"
+        result.matchedPattern = fetalPattern
+
+        -- For fetal SVRTK, we send the whole study
+        result.selectedInstances = { forAI_study = true }
+
+        Log.info("Study matched fetal SVRTK pattern", {
+            studyId = studyId,
+            pattern = fetalPattern,
+            sendWholeStudy = true,
+        })
+
+        return result
+    end
+
     -- ─────────────────────────────────────────────────────────────────────────────
     -- NO MATCH
     -- ─────────────────────────────────────────────────────────────────────────────

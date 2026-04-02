@@ -20,7 +20,7 @@
     "retry_delay": 900,
     "retry_max": 5,
     "series_complete_trigger": 60,
-    "study_complete_trigger": 900,
+    "study_complete_trigger": 120,
     "study_forcecomplete_trigger": 5400,
     "dicom_receiver": {
         "additional_tags": {}
@@ -67,6 +67,38 @@
             "priority": "normal",
             "processing_module": [
                 "PediatricLegLength"
+            ],
+            "processing_settings": {},
+            "processing_retain_images": false,
+            "notification_email": "",
+            "notification_webhook": "",
+            "notification_payload": "",
+            "notification_payload_body": "Rule \"{{ rule }}\" triggered {{ event }}\r\n{% if details is defined and details|length %}\r\nDetails:\r\n{{ details }}\r\n{% endif %}",
+            "notification_email_body": "Rule \"{{ rule }}\" triggered {{ event }}\r\nName: {{ patient_name }}\r\nACC: {{ acc }}\r\nMRN: {{ mrn }}\r\n{% if details is defined and details|length %}\r\nDetails:\r\n{{ details }}\r\n{% endif %}",
+            "notification_email_type": "plain",
+            "notification_trigger_reception": true,
+            "notification_trigger_completion": true,
+            "notification_trigger_completion_on_request": false,
+            "notification_trigger_error": true
+        },
+        "SVRTKFetalRule": {
+            "rule": "(\"SSFSEX\" in tags.StudyDescription or \"SSFSE\" in tags.StudyDescription or \"FIESTA\" in tags.StudyDescription or \"T2\" in tags.StudyDescription or \"FETAL\" in tags.StudyDescription or \"UTERUS\" in tags.StudyDescription or \"OBSTETRIC\" in tags.StudyDescription)",
+            "target": [
+                "OrthancLPCH"
+            ],
+            "disabled": false,
+            "fallback": false,
+            "contact": "",
+            "comment": "Fetal MRI studies for SVRTK reconstruction processing",
+            "tags": "",
+            "action": "both",
+            "action_trigger": "study",
+            "study_trigger_condition": "timeout",
+            "study_force_completion_action": "proceed",
+            "study_trigger_series": "",
+            "priority": "normal",
+            "processing_module": [
+                "SVRTKFetal"
             ],
             "processing_settings": {},
             "processing_retain_images": false,
@@ -128,6 +160,43 @@
             },
             "contact": "arogya@stanford.edu",
             "comment": "Pediatric Leg Length Module",
+            "constraints": "",
+            "resources": "",
+            "requires_root": false
+        },
+        "SVRTKFetal": {
+            "docker_tag": "mercure-svrtk-fetal:v8",
+            "additional_volumes": "",
+            "environment": "",
+            "docker_arguments": "",
+            "settings": {
+                "timeout": 3600,
+                "workers": 8,
+                "temp_dir": "/tmp",
+                "work_dir": "/tmp",
+                "output_dir": "/opt/mercure/data",
+                "target_pacs": "LPCHROUTER",
+                "monitoring": {
+                    "enabled": true,
+                    "metrics": {
+                        "collection_interval": 10,
+                        "batch_size": 50,
+                        "include_system_metrics": true,
+                        "include_model_metrics": true
+                    },
+                    "backends": {
+                        "file": {
+                            "enabled": true,
+                            "path": "${MONITORING_DATA_PATH}"
+                        },
+                        "mercure": {
+                            "enabled": true
+                        }
+                    }
+                }
+            },
+            "contact": "arogya@stanford.edu",
+            "comment": "SVRTK Fetal MRI Reconstruction Module (v8)",
             "constraints": "",
             "resources": "",
             "requires_root": false

@@ -430,6 +430,27 @@ monitoring-setup:
 AI_IMAGE := stanfordaide/pediatric-leglength
 AI_TAG   := latest
 
+# =============================================================================
+# SVRTK FETAL RECONSTRUCTION - Docker Image
+# =============================================================================
+
+SVRTK_IMAGE := mercure-svrtk-fetal
+SVRTK_TAG   := v8
+
+svrtk-build:
+	@printf "$(CYAN)Building SVRTK fetal reconstruction module...$(RESET)\n"
+	@cd mercure-svrtk-fetal && docker build -t $(SVRTK_IMAGE):$(SVRTK_TAG) .
+	@printf "$(GREEN)✅ SVRTK module built: $(SVRTK_IMAGE):$(SVRTK_TAG)$(RESET)\n"
+
+svrtk-clean:
+	@printf "$(YELLOW)Removing old SVRTK images...$(RESET)\n"
+	@docker images $(SVRTK_IMAGE) -q | xargs -r docker rmi -f 2>/dev/null || true
+	@printf "$(YELLOW)SVRTK images cleaned$(RESET)\n"
+
+svrtk-info:
+	@printf "$(CYAN)SVRTK Module Info:$(RESET)\n"
+	@docker images $(SVRTK_IMAGE) --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"
+
 ai-build:
 	@printf "$(CYAN)Building AI module...$(RESET)\n"
 	@cd mercure-pediatric-leglength && docker build -t $(AI_IMAGE):$(AI_TAG) .

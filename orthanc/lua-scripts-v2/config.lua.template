@@ -93,6 +93,25 @@ Config.MATCHING = {
         "CT ABDOMEN PELVIS W IV CONTRAST",
         "CT_ABDOMEN_PELVIS_W_IV_CONTRAST",
     },
+
+    -- Fetal MRI studies for SVRTK processing (based on working autosend_svrtk_fetal.lua)
+    FETAL_SVRTK_PATTERNS = {
+        "SSFSEX",           -- Single Shot Fast Spin Echo (corrected from SSFSE)
+        "SSFSE",            -- Legacy compatibility 
+        "FIESTA",           -- Fast Imaging Employing Steady-state Acquisition
+        "T2",               -- T2-weighted sequences
+        "TSE",              -- Turbo Spin Echo
+        "HASTE",            -- Half-Fourier Acquisition Single-shot Turbo spin Echo
+        "TRUFI",            -- True Fast Imaging with Steady State Precession
+        "BALANCED FFE",     -- Balanced Fast Field Echo
+        "FETAL",            -- General fetal keyword
+        "UTERUS",           -- Uterine imaging
+        "BRAIN",            -- Fetal brain
+        "BODY",             -- Fetal body
+        "OBSTETRIC",        -- Obstetric studies
+        "PREGNANCY",        -- Pregnancy-related
+        "GESTATIONAL",      -- Gestational studies
+    },
     
     -- Patterns to identify AI results coming back from MERCURE
     -- If ANY series matches ANY of these, it's considered AI_RESULT
