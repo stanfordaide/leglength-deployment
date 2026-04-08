@@ -56,9 +56,10 @@ Config.DESTINATIONS = {
     MERCURE = "MERCURE",           -- Sends to MERCURE for AI analysis
     
     -- Final PACS destinations (after AI processing)
-    LPCH    = "LPCHROUTER",        -- LPCH PACS
-    LPCHT   = "LPCHTROUTER",       -- LPCHT PACS  
-    MODLINK = "MODLINK",           -- Structured reports
+    LPCH          = "LPCHROUTER",     -- LPCH PACS via LPCHROUTER port 4000 (leg length QA viz)
+    LPCHT         = "LPCHTROUTER",    -- LPCHT PACS via LPCHTROUTER port 4000 (leg length QA viz)
+    MODLINK       = "MODLINK",        -- Structured reports
+    LPCHROUTER104 = "LPCHROUTER104",  -- LPCH PACS via LPCHROUTER port 104 (fetal SVRTK results)
 }
 
 -- ─────────────────────────────────────────────────────────────────────────────────

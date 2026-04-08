@@ -11,9 +11,17 @@ services:
         condition: service_started
       worker_fast_2:
         condition: service_started
+      worker_fast_3:
+        condition: service_started
+      worker_fast_4:
+        condition: service_started
       worker_slow_1:
         condition: service_started
       worker_slow_2:
+        condition: service_started
+      worker_slow_3:
+        condition: service_started
+      worker_slow_4:
         condition: service_started
     image: mercureimaging/mercure-ui${IMAGE_TAG}
     restart: always
@@ -226,6 +234,40 @@ services:
       - leglength-network
       - mercure_network
 
+  worker_fast_3:
+    container_name: mercure_worker_fast_3
+    user: "${UID}:${GID}"
+    image: mercureimaging/mercure-worker${IMAGE_TAG}
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      - config:/opt/mercure/config
+      - data:/opt/mercure/data
+    environment:
+      WORKER_QUEUE: mercure_fast
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - leglength-network
+      - mercure_network
+
+  worker_fast_4:
+    container_name: mercure_worker_fast_4
+    user: "${UID}:${GID}"
+    image: mercureimaging/mercure-worker${IMAGE_TAG}
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      - config:/opt/mercure/config
+      - data:/opt/mercure/data
+    environment:
+      WORKER_QUEUE: mercure_fast
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - leglength-network
+      - mercure_network
+
   worker_slow_1:
     container_name: mercure_worker_slow_1
     user: "${UID}:${GID}"
@@ -245,6 +287,40 @@ services:
 
   worker_slow_2:
     container_name: mercure_worker_slow_2
+    user: "${UID}:${GID}"
+    image: mercureimaging/mercure-worker${IMAGE_TAG}
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      - config:/opt/mercure/config
+      - data:/opt/mercure/data
+    environment:
+      WORKER_QUEUE: mercure_slow
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - leglength-network
+      - mercure_network
+
+  worker_slow_3:
+    container_name: mercure_worker_slow_3
+    user: "${UID}:${GID}"
+    image: mercureimaging/mercure-worker${IMAGE_TAG}
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      - config:/opt/mercure/config
+      - data:/opt/mercure/data
+    environment:
+      WORKER_QUEUE: mercure_slow
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - leglength-network
+      - mercure_network
+
+  worker_slow_4:
+    container_name: mercure_worker_slow_4
     user: "${UID}:${GID}"
     image: mercureimaging/mercure-worker${IMAGE_TAG}
     restart: always

@@ -20,7 +20,7 @@
     "retry_delay": 900,
     "retry_max": 5,
     "series_complete_trigger": 60,
-    "study_complete_trigger": 120,
+    "study_complete_trigger": 600,
     "study_forcecomplete_trigger": 5400,
     "dicom_receiver": {
         "additional_tags": {}
