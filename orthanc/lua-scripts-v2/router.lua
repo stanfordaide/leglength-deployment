@@ -260,6 +260,39 @@ local function routeToFinalDestinations(studyId, matchResult)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────────
+-- Route SVRTK_RESULT study to LPCH PACS via LPCHROUTER104 (port 104)
+--
+local function routeSVRTKResult(studyId, matchResult)
+    if not isFinalRoutingEnabled() then
+        Log.info("Final routing disabled, skipping SVRTK result routing", { studyId = studyId })
+        return true
+    end
+
+    local selected = matchResult.selectedInstances or {}
+    local recons = selected.svrkReconstructions or {}
+
+    if #recons == 0 then
+        Log.warn("No SVRTK reconstruction instances to route", { studyId = studyId })
+        return true
+    end
+
+    Log.info("Routing SVRTK reconstructions to LPCH PACS", {
+        studyId = studyId,
+        count = #recons,
+        destination = getDestination("LPCHROUTER104"),
+    })
+
+    local successCount, failCount = sendInstances(studyId, recons, getDestination("LPCHROUTER104"))
+
+    Log.info("SVRTK result routing complete", {
+        studyId = studyId,
+        sent = successCount,
+        failed = failCount,
+    })
+
+    return failCount == 0
+end
+
 -- SECTION 4: MAIN EXECUTE FUNCTION
 -- ─────────────────────────────────────────────────────────────────────────────────
 
@@ -312,6 +345,11 @@ function Router.execute(studyId, matchResult, instances)
         Log.info("Routing LEG_LENGTH study to AI", { studyId = studyId })
         return routeToAI(studyId, matchResult, instances)
         
+    elseif studyType == Matcher.STUDY_TYPES.SVRTK_RESULT then
+        -- SVRTK reconstruction result → send to LPCH PACS via LPCHROUTER104
+        Log.info("Routing SVRTK_RESULT to LPCH PACS", { studyId = studyId })
+        return routeSVRTKResult(studyId, matchResult)
+
     elseif studyType == Matcher.STUDY_TYPES.AI_RESULT then
         -- AI result → send to final destinations
         Log.info("Routing AI_RESULT to final destinations", { studyId = studyId })
