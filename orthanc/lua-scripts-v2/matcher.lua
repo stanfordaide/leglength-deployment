@@ -33,11 +33,12 @@ local Matcher = {}
 -- ─────────────────────────────────────────────────────────────────────────────────
 
 Matcher.STUDY_TYPES = {
-    LEG_LENGTH = "LEG_LENGTH",       -- Needs AI processing
-    FETAL_SVRTK = "FETAL_SVRTK",     -- Fetal MRI for SVRTK reconstruction
-    AI_RESULT = "AI_RESULT",         -- Has AI output, route to final destinations
-    CT_ABDOMEN = "CT_ABDOMEN",       -- CT Abdomen study, route to LPCH/LPCHT
-    UNMATCHED = "UNMATCHED",         -- Doesn't match any rules
+    LEG_LENGTH   = "LEG_LENGTH",    -- Needs AI processing
+    FETAL_SVRTK  = "FETAL_SVRTK",   -- Fetal MRI for SVRTK reconstruction
+    SVRTK_RESULT = "SVRTK_RESULT",  -- SVRTK reconstruction output, route to LPCH PACS via port 104
+    AI_RESULT    = "AI_RESULT",     -- Has AI output, route to final destinations
+    CT_ABDOMEN   = "CT_ABDOMEN",    -- CT Abdomen study, route to LPCH/LPCHT
+    UNMATCHED    = "UNMATCHED",     -- Doesn't match any rules
 }
 
 -- ─────────────────────────────────────────────────────────────────────────────────
@@ -258,6 +259,24 @@ function Matcher.findStructuredReports(instances)
     return results
 end
 
+--
+-- Find SVRTK reconstruction instances (for routing to LPCH PACS via LPCHROUTER104)
+-- Matches series descriptions containing "SVRTK" (e.g. "SVRTK FIESTA Brain Reconstruction")
+--
+function Matcher.findSVRTKReconstructions(instances)
+    local results = {}
+
+    for _, instance in ipairs(instances or {}) do
+        local seriesDesc = Utils.safeGet(instance, "SeriesDescription", "")
+        if Utils.containsIgnoreCase(seriesDesc, "SVRTK") then
+            table.insert(results, instance)
+        end
+    end
+
+    Log.debug("Found SVRTK reconstruction instances", { count = #results })
+    return results
+end
+
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- SECTION 4: MAIN ANALYSIS FUNCTION
 -- ─────────────────────────────────────────────────────────────────────────────────
@@ -388,7 +407,25 @@ function Matcher.analyze(studyId, tags, instances)
     end
     
     -- ─────────────────────────────────────────────────────────────────────────────
-    -- CHECK 4: Does this match fetal SVRTK patterns?
+    -- CHECK 4: Does this study contain SVRTK reconstruction results?
+    -- These arrive back from Mercure with "SVRTK" in SeriesDescription.
+    -- Route them to LPCH PACS via LPCHROUTER104 (port 104).
+    -- ─────────────────────────────────────────────────────────────────────────────
+    if hasSVRTKResultMarker(instances) then
+        result.shouldRoute = true
+        result.studyType = Matcher.STUDY_TYPES.SVRTK_RESULT
+        result.reason = "contains_svrtk_output"
+        result.selectedInstances = {
+            svrkReconstructions = Matcher.findSVRTKReconstructions(instances),
+        }
+        Log.info("Study identified as SVRTK result", {
+            studyId = studyId,
+            count = #result.selectedInstances.svrkReconstructions,
+        })
+        return result
+    end
+
+    -- CHECK 5: Does this match fetal SVRTK patterns?
     -- ─────────────────────────────────────────────────────────────────────────────
     local fetalMatches, fetalPattern = matchesFetalSvrtkStudy(studyDesc)
     if fetalMatches then
