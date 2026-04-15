@@ -1,7 +1,7 @@
-# Set base image to python:3.12.3-slim-bookworm using index digest hash to fix version
-# This version of python:3.12.3-slim-bookworm has OS: Debian 12 (bookworm) and python: 3.12.3
+# CUDA 12.1 + cuDNN 8 runtime on Ubuntu 22.04
+# Python 3.12 is installed below via the deadsnakes PPA
 # Use --platform=linux/arm64 for Apple Silicon Macs, or remove --platform for auto-detection
-FROM python@sha256:2be8daddbb82756f7d1f2c7ece706aadcb284bf6ab6d769ea695cc3ed6016743
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 # Environment variables for better container behavior
 # Limit CPU threads to reduce I/O thrashing on NAS (OMP/MKL used by PyTorch)
@@ -32,13 +32,20 @@ WORKDIR ${HOME_DIR}
 # Create non-root user for security
 RUN groupadd -r mercureapp && useradd -r -g mercureapp -d ${HOME_DIR} -s /bin/bash mercureapp
 
-# 1. Update package list for apt-get
-# 2. Use apt-get to install required packages, 
-#    skipping installation of recommended packages
-#    (to keep the image size small)
-# 3. Clean up package manager cache to reduce image size
+# 1. Install software-properties-common to add deadsnakes PPA for Python 3.12
+# 2. Install Python 3.12 and system dependencies
+# 3. Bootstrap pip for Python 3.12 and set it as the default python3/pip3
+# 4. Clean up package manager cache to reduce image size
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
+        software-properties-common \
+        && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
         git \
         wget \
         curl \
@@ -51,13 +58,15 @@ RUN apt-get update -qq && \
         libgomp1 \
         gosu \
         && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Upgrade pip and install Python dependencies
 COPY requirements.txt ${HOME_DIR}/requirements.txt
-RUN pip3 install --upgrade pip setuptools wheel && \
-    pip3 install -r requirements.txt
+RUN python3.12 -m pip install --upgrade pip setuptools wheel && \
+    python3.12 -m pip install -r requirements.txt
 
 # Create models and cache directories
 RUN mkdir -p ${HOME_DIR}/models ${HOME_DIR}/.cache
