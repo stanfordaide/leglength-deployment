@@ -747,34 +747,42 @@ class DicomProcessor:
         # Create content sequence for measurements
         # content_seq = []
         
+        # Round the 4 base measurements to 1dp once; every display and calculation below uses
+        # these values so that arithmetic stays consistent and float subtraction artefacts
+        # (e.g. round(46.3,1) - round(46.2,1) == 0.0999...) cannot creep in.
+        meas = results['measurements']
+        r_fem = round(meas['PLL_R_FEM']['centimeters'], 1) if 'PLL_R_FEM' in meas else None
+        l_fem = round(meas['PLL_L_FEM']['centimeters'], 1) if 'PLL_L_FEM' in meas else None
+        r_tib = round(meas['PLL_R_TIB']['centimeters'], 1) if 'PLL_R_TIB' in meas else None
+        l_tib = round(meas['PLL_L_TIB']['centimeters'], 1) if 'PLL_L_TIB' in meas else None
+
         # Create separate content items for each measurement
-        for name, data in results['measurements'].items():
+        for name, data in meas.items():
             text_item = Dataset()
             text_item.RelationshipType = 'HAS PROPERTIES'
             text_item.ValueType = 'TEXT'
             text_item.ConceptNameCodeSequence = [Dataset()]
             text_item.ConceptNameCodeSequence[0].CodeValue = f"99_{name}"
             text_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            
-            # Format text based on measurement name - numeric value only (no units)
+
             if name == 'PLL_R_FEM':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Right femur length"
-                text = f"{data['centimeters']:.1f}"
+                text = f"{r_fem:.1f}"
             elif name == 'PLL_R_TIB':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Right tibia length"
-                text = f"{data['centimeters']:.1f}"
+                text = f"{r_tib:.1f}"
             elif name == 'PLL_R_LGL':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Total right lower extremity length"
-                text = f"{data['centimeters']:.1f}"
+                text = f"{round(r_fem + r_tib, 1):.1f}" if r_fem is not None and r_tib is not None else f"{data['centimeters']:.1f}"
             elif name == 'PLL_L_FEM':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Left femur length"
-                text = f"{data['centimeters']:.1f}"
+                text = f"{l_fem:.1f}"
             elif name == 'PLL_L_TIB':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Left tibia length"
-                text = f"{data['centimeters']:.1f}"
+                text = f"{l_tib:.1f}"
             elif name == 'PLL_L_LGL':
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = "Total left lower extremity length"
-                text = f"{data['centimeters']:.1f}"
+                text = f"{round(l_fem + l_tib, 1):.1f}" if l_fem is not None and l_tib is not None else f"{data['centimeters']:.1f}"
             else:
                 text_item.ConceptNameCodeSequence[0].CodeMeaning = f"{name} length"
                 text = f"{data['centimeters']:.1f}"
@@ -783,10 +791,9 @@ class DicomProcessor:
             content_seq.append(text_item)
 
         # Add difference measurements as separate placeholders (for sentence construction)
-        if all(k in results['measurements'] for k in ['PLL_R_FEM', 'PLL_L_FEM']):
-            fem_diff = (round(results['measurements']['PLL_R_FEM']['centimeters'], 1) - 
-                        round(results['measurements']['PLL_L_FEM']['centimeters'], 1))
-            
+        if r_fem is not None and l_fem is not None:
+            fem_diff = round(r_fem - l_fem, 1)
+
             # 99_FEM_DIFF_LONGER_SIDE: which side is longer
             longer_side = "-" if fem_diff == 0 else ("R" if fem_diff > 0 else "L")
             side_item = Dataset()
@@ -798,7 +805,7 @@ class DicomProcessor:
             side_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur length - longer side"
             side_item.TextValue = longer_side
             content_seq.append(side_item)
-            
+
             # 99_FEM_DIFF_VALUE: absolute difference (numeric only, no units)
             val_item = Dataset()
             val_item.RelationshipType = 'HAS PROPERTIES'
@@ -809,9 +816,9 @@ class DicomProcessor:
             val_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur length difference value"
             val_item.TextValue = f"{abs(fem_diff):.1f}"
             content_seq.append(val_item)
-            
+
             # 99_FEM_DIFF_DISPLAY: ready-to-display sentence (backup for Modlink template limitation)
-            if abs(fem_diff) < 0.1:
+            if fem_diff == 0:
                 display_text = "Femur lengths are equal"
             elif fem_diff > 0:
                 display_text = f"Right femur is longer than left by {fem_diff:.1f} cm"
@@ -827,27 +834,9 @@ class DicomProcessor:
             disp_item.TextValue = display_text
             content_seq.append(disp_item)
 
-            # # Femur discrepancy description
-            # desc_item = Dataset()
-            # desc_item.RelationshipType = 'HAS PROPERTIES'
-            # desc_item.ValueType = 'TEXT'
-            # desc_item.ConceptNameCodeSequence = [Dataset()]
-            # desc_item.ConceptNameCodeSequence[0].CodeValue = "99_FEM_DIFF_DESC"
-            # desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            # desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur Length Discrepancy"
-            # if fem_diff > femur_threshold:
-            #     if results['measurements']['PLL_R_FEM']['centimeters'] > results['measurements']['PLL_L_FEM']['centimeters']:
-            #         desc_item.TextValue = "The right femur is longer"
-            #     else:
-            #         desc_item.TextValue = "The left femur is longer"
-            # else:
-            #     desc_item.TextValue = "There is no femoral length discrepancy"
-            # content_seq.append(desc_item)
+        if r_tib is not None and l_tib is not None:
+            tib_diff = round(r_tib - l_tib, 1)
 
-        if all(k in results['measurements'] for k in ['PLL_R_TIB', 'PLL_L_TIB']):
-            tib_diff = (round(results['measurements']['PLL_R_TIB']['centimeters'], 1) - 
-                        round(results['measurements']['PLL_L_TIB']['centimeters'], 1))
-            
             # 99_TIB_DIFF_LONGER_SIDE
             longer_side = "-" if tib_diff == 0 else ("R" if tib_diff > 0 else "L")
             side_item = Dataset()
@@ -859,7 +848,7 @@ class DicomProcessor:
             side_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia length - longer side"
             side_item.TextValue = longer_side
             content_seq.append(side_item)
-            
+
             # 99_TIB_DIFF_VALUE
             val_item = Dataset()
             val_item.RelationshipType = 'HAS PROPERTIES'
@@ -870,9 +859,9 @@ class DicomProcessor:
             val_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia length difference value"
             val_item.TextValue = f"{abs(tib_diff):.1f}"
             content_seq.append(val_item)
-            
+
             # 99_TIB_DIFF_DISPLAY: ready-to-display sentence (backup)
-            if abs(tib_diff) < 0.1:
+            if tib_diff == 0:
                 display_text = "Tibia lengths are equal"
             elif tib_diff > 0:
                 display_text = f"Right tibia is longer than left by {tib_diff:.1f} cm"
@@ -888,29 +877,9 @@ class DicomProcessor:
             disp_item.TextValue = display_text
             content_seq.append(disp_item)
 
-            # # Tibia discrepancy description
-            # desc_item = Dataset()
-            # desc_item.RelationshipType = 'HAS PROPERTIES'
-            # desc_item.ValueType = 'TEXT'
-            # desc_item.ConceptNameCodeSequence = [Dataset()]
-            # desc_item.ConceptNameCodeSequence[0].CodeValue = "99_TIB_DIFF_DESC"
-            # desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            # desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia Length Discrepancy"
-            # if tib_diff > tibia_threshold:
-            #     if results['measurements']['PLL_R_TIB']['centimeters'] > results['measurements']['PLL_L_TIB']['centimeters']:
-            #         desc_item.TextValue = "The right tibia is longer"
-            #     else:
-            #         desc_item.TextValue = "The left tibia is longer"
-            # else:
-            #     desc_item.TextValue = "There is no tibial length discrepancy"
-            # content_seq.append(desc_item)
+        if all(v is not None for v in [r_fem, l_fem, r_tib, l_tib]):
+            total_diff = round(r_fem + r_tib - l_fem - l_tib, 1)
 
-        if all(k in results['measurements'] for k in ['PLL_R_LGL', 'PLL_L_LGL']):
-            total_diff = (round(results['measurements']['PLL_R_FEM']['centimeters'], 1) +
-                          round(results['measurements']['PLL_R_TIB']['centimeters'], 1) -
-                          round(results['measurements']['PLL_L_FEM']['centimeters'], 1) -
-                          round(results['measurements']['PLL_L_TIB']['centimeters'], 1))
-            
             # 99_TOT_DIFF_LONGER_SIDE
             longer_side = "-" if total_diff == 0 else ("R" if total_diff > 0 else "L")
             side_item = Dataset()
@@ -922,7 +891,7 @@ class DicomProcessor:
             side_item.ConceptNameCodeSequence[0].CodeMeaning = "Total leg length - longer side"
             side_item.TextValue = longer_side
             content_seq.append(side_item)
-            
+
             # 99_TOT_DIFF_VALUE
             val_item = Dataset()
             val_item.RelationshipType = 'HAS PROPERTIES'
@@ -933,9 +902,9 @@ class DicomProcessor:
             val_item.ConceptNameCodeSequence[0].CodeMeaning = "Total leg length difference value"
             val_item.TextValue = f"{abs(total_diff):.1f}"
             content_seq.append(val_item)
-            
+
             # 99_TOT_DIFF_DISPLAY: ready-to-display sentence (backup)
-            if abs(total_diff) < 0.1:
+            if total_diff == 0:
                 display_text = "Total leg lengths are equal"
             elif total_diff > 0:
                 display_text = f"Right leg is longer than left by {total_diff:.1f} cm"
