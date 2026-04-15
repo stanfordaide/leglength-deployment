@@ -1,22 +1,28 @@
-# Pediatric Leg Length AI - Deployment
+# Pediatric Radiology Image Analysis - Deployment
 
-Complete deployment package for the pediatric leg length measurement AI pipeline.
+Umbrella deployment package for pediatric radiology AI pipelines at LPCH. Currently includes:
+
+- **Leg Length Measurement** — automated bone length measurement from full-leg DXA/radiographs
+- **Fetal MRI Reconstruction (SVRTK)** — slice-to-volume reconstruction for fetal brain and body MRI
 
 ## Quick Links
 
 - **[CHANGES.md](CHANGES.md)** - Complete guide for making changes (configuration, make commands, workflows)
 - **Component READMEs:** [`orthanc/`](orthanc/README.md) | [`mercure/`](mercure/README.md) | [`monitoring/`](monitoring/README.md)
+- **Module READMEs:** [`mercure-pediatric-leglength/`](mercure-pediatric-leglength/README.md) | [`mercure-svrtk-fetal/`](mercure-svrtk-fetal/README.md)
 
 ## Architecture
 
 ```
-┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│   ORTHANC PACS   │      │     MERCURE      │      │   AI MODULE      │
-│  DICOM Server    │─────▶│  Job Dispatcher  │─────▶│  Leg Length      │
-│  Lua Routing     │◀─────│  Bookkeeper DB   │◀─────│  Detector        │
-└────────┬─────────┘      └────────┬─────────┘      └──────────────────┘
-         │                         │
-         └─────────────────────────┘
+                                                   ┌──────────────────────┐
+                                              ┌───▶│  Leg Length Module   │
+┌──────────────────┐      ┌──────────────────┐│   │  (DXA/Radiograph)    │
+│   ORTHANC PACS   │      │     MERCURE      ││   └──────────────────────┘
+│  DICOM Server    │─────▶│  Job Dispatcher  │┤
+│  Lua Routing     │◀─────│  Bookkeeper DB   ││   ┌──────────────────────┐
+└────────┬─────────┘      └────────┬─────────┘└───▶  SVRTK Fetal MRI    │
+         │                         │               │  (Brain & Body)      │
+         └─────────────────────────┘               └──────────────────────┘
                     │
                     ▼
          ┌──────────────────────────┐
@@ -125,12 +131,29 @@ sudo docker compose ps
 
 ```
 1. Study arrives at Orthanc (DICOM port 4242)
-2. Lua script analyzes: needs AI processing?
-3. If yes, routes to Mercure job queue
-4. Mercure dispatches to AI module for processing
-5. AI results returned to Orthanc
-6. Lua routes final results to PACS destination
+2. Lua script identifies study type (leg length DXR or fetal MRI)
+3. Routes to Mercure job queue with appropriate rule
+4. Mercure dispatches to the matching AI module:
+   - Leg length → pediatric-leglength container → SR + annotated DICOM
+   - Fetal MRI  → SVRTK v8 container → reconstructed NIfTI → DICOM series
+5. Results returned to Orthanc
+6. Lua auto-forwards final results to PACS destination (LPCHROUTER)
 ```
+
+## AI Modules
+
+### Leg Length Measurement (`mercure-pediatric-leglength/`)
+- **Input**: Full-leg DXA or radiograph series (DX modality)
+- **Output**: DICOM SR with measurements + annotated images
+- **Model**: PyTorch landmark detection, auto-loaded from `registry.json`
+- **Trigger**: Mercure `study_complete_trigger = 600s`
+
+### Fetal MRI Reconstruction (`mercure-svrtk-fetal/`)
+- **Input**: Fetal MRI study (SSFSEx / FIESTA series, brain + body)
+- **Output**: Up to 4 SVRTK-reconstructed DICOM series per study
+- **Processor**: `intelligent_svrtk_processor.py` with series auto-categorization
+- **Container**: `localhost/svrtk:openjpeg-embedded-nii2dcm-fixed-v8`
+- **Workers**: 8 concurrent (handles 2000+ instance studies)
 
 ## Security
 
@@ -142,15 +165,17 @@ sudo docker compose ps
 
 ```
 leglength-deployment/
-├── orthanc/               # DICOM PACS & Lua routing
-├── mercure/               # Job orchestration  
-├── monitoring/            # Workflow UI, API, Grafana
-├── scripts/               # Setup & config generation
-├── config.env.template    # Master configuration
-├── CHANGES.md            # Change guide & best practices
-└── Makefile              # Service orchestration
+├── orthanc/                      # DICOM PACS & Lua routing
+├── mercure/                      # Job orchestration
+├── mercure-pediatric-leglength/  # Leg length AI module
+├── mercure-svrtk-fetal/          # Fetal MRI SVRTK reconstruction module
+├── monitoring/                   # Workflow UI, API, Grafana
+├── scripts/                      # Setup & config generation
+├── config.env.template           # Master configuration
+├── CHANGES.md                   # Change guide & best practices
+└── Makefile                     # Service orchestration
 ```
 
 ## License
 
-Internal use only - Stanford AIDE Lab
+Internal use only - Stanford AIDE Lab / Lucile Packard Children's Hospital
