@@ -784,8 +784,8 @@ class DicomProcessor:
 
         # Add difference measurements as separate placeholders (for sentence construction)
         if all(k in results['measurements'] for k in ['PLL_R_FEM', 'PLL_L_FEM']):
-            fem_diff = round(results['measurements']['PLL_R_FEM']['centimeters'] - 
-                             results['measurements']['PLL_L_FEM']['centimeters'], 1)
+            fem_diff = (round(results['measurements']['PLL_R_FEM']['centimeters'], 1) - 
+                        round(results['measurements']['PLL_L_FEM']['centimeters'], 1))
             
             # 99_FEM_DIFF_LONGER_SIDE: which side is longer
             longer_side = "-" if fem_diff == 0 else ("R" if fem_diff > 0 else "L")
@@ -845,8 +845,8 @@ class DicomProcessor:
             # content_seq.append(desc_item)
 
         if all(k in results['measurements'] for k in ['PLL_R_TIB', 'PLL_L_TIB']):
-            tib_diff = round(results['measurements']['PLL_R_TIB']['centimeters'] - 
-                             results['measurements']['PLL_L_TIB']['centimeters'], 1)
+            tib_diff = (round(results['measurements']['PLL_R_TIB']['centimeters'], 1) - 
+                        round(results['measurements']['PLL_L_TIB']['centimeters'], 1))
             
             # 99_TIB_DIFF_LONGER_SIDE
             longer_side = "-" if tib_diff == 0 else ("R" if tib_diff > 0 else "L")
@@ -906,8 +906,10 @@ class DicomProcessor:
             # content_seq.append(desc_item)
 
         if all(k in results['measurements'] for k in ['PLL_R_LGL', 'PLL_L_LGL']):
-            total_diff = round(results['measurements']['PLL_R_LGL']['centimeters'] - 
-                               results['measurements']['PLL_L_LGL']['centimeters'], 1)
+            total_diff = (round(results['measurements']['PLL_R_FEM']['centimeters'], 1) +
+                          round(results['measurements']['PLL_R_TIB']['centimeters'], 1) -
+                          round(results['measurements']['PLL_L_FEM']['centimeters'], 1) -
+                          round(results['measurements']['PLL_L_TIB']['centimeters'], 1))
             
             # 99_TOT_DIFF_LONGER_SIDE
             longer_side = "-" if total_diff == 0 else ("R" if total_diff > 0 else "L")
