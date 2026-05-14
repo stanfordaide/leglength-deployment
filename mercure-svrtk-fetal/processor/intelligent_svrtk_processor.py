@@ -79,32 +79,49 @@ class IntelligentSVRTKProcessor:
         
         # Reconstruction categories
         # NOTE: ssfsex is the primary pattern, ssfse is kept as fallback
+        # default_thickness: fallback PSF thickness (mm) if DICOM tag is missing
+        # output_resolution: reconstruction output voxel size (mm)
+        #   Brain: 0.8mm — standard SVR brain resolution
+        #   Body:  1.0mm — body DSVR from 4-5mm input slices; 0.8mm is too aggressive
         self.categories = {
             'ssfsex_brain': {
                 'patterns': [r'.*ssfsex.*brain.*', r'.*ssfse.*brain.*'],
                 'script': '/home/auto-proc-svrtk/scripts/auto-brain-reconstruction.sh',
                 'output_dir': 'ssfsex_brain_reconstruction',
-                'description': 'SSFSEx Brain'
+                'description': 'SSFSEx Brain',
+                'default_thickness': 3.0,
+                'output_resolution': 0.8,
             },
             'fiesta_brain': {
                 'patterns': [r'.*fiesta.*brain.*'],
                 'script': '/home/auto-proc-svrtk/scripts/auto-brain-reconstruction.sh',
                 'output_dir': 'fiesta_brain_reconstruction',
-                'description': 'FIESTA Brain'
+                'description': 'FIESTA Brain',
+                'default_thickness': 3.0,
+                'output_resolution': 0.8,
             },
             'ssfsex_body': {
                 'patterns': [r'.*ssfsex.*body.*', r'.*ssfse.*body.*'],
                 'script': '/home/auto-proc-svrtk/scripts/auto-body-reconstruction.sh',
                 'output_dir': 'ssfsex_body_reconstruction',
-                'description': 'SSFSEx Body'
+                'description': 'SSFSEx Body',
+                'default_thickness': 4.0,
+                'output_resolution': 1.0,
             },
             'fiesta_body': {
                 'patterns': [r'.*fiesta.*body.*'],
                 'script': '/home/auto-proc-svrtk/scripts/auto-body-reconstruction.sh',
                 'output_dir': 'fiesta_body_reconstruction',
-                'description': 'FIESTA Body'
+                'description': 'FIESTA Body',
+                'default_thickness': 4.0,
+                'output_resolution': 1.0,
             }
         }
+
+        # Per-category slice thickness detected from DICOM tags (populated in analyze_dicom_series)
+        self.detected_thickness = {}
+        # Per-category representative DICOM file for nii2dcm reference (populated in read_dicom_metadata)
+        self.category_ref_dicom = {}
         
     def read_task_json(self):
         """Read Mercure task.json configuration if available with race condition protection"""
@@ -176,7 +193,7 @@ class IntelligentSVRTKProcessor:
         
         raise Exception("Max retries exceeded")
         
-    def check_disk_space(self, required_gb=50):
+    def check_disk_space(self, required_gb=30):
         """Check available disk space before processing to prevent task.json corruption"""
         import shutil
         
@@ -226,6 +243,94 @@ class IntelligentSVRTKProcessor:
         else:
             logger.info("No temp directories found to clean")
             
+    def read_dicom_metadata(self, dicom_files):
+        """
+        Pre-pass: read SliceThickness (and SpacingBetweenSlices) per series from DICOM tags
+        before dcm2niix conversion discards per-series metadata.
+        Populates self.detected_thickness[category] with the median measured thickness.
+        """
+        if not PYDICOM_AVAILABLE or not dicom_files:
+            return
+
+        logger.info("Reading DICOM metadata to detect actual slice thickness per series...")
+
+        # group by SeriesInstanceUID
+        series_meta = {}  # uid -> {'desc': str, 'thicknesses': [float]}
+        for dcm_path in dicom_files:
+            try:
+                ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True)
+                uid = getattr(ds, 'SeriesInstanceUID', None)
+                if uid is None:
+                    continue
+                desc = getattr(ds, 'SeriesDescription', '').strip()
+                # Prefer SpacingBetweenSlices if present (more accurate for multi-stack), else SliceThickness
+                thickness = None
+                for tag in ('SpacingBetweenSlices', 'SliceThickness'):
+                    raw = getattr(ds, tag, None)
+                    if raw is not None:
+                        try:
+                            thickness = float(raw)
+                            break
+                        except (ValueError, TypeError):
+                            pass
+                if uid not in series_meta:
+                    series_meta[uid] = {'desc': desc, 'thicknesses': []}
+                if thickness is not None:
+                    series_meta[uid]['thicknesses'].append(thickness)
+            except Exception:
+                pass
+
+        # Match each series to a category and record its median thickness
+        import statistics
+        category_thicknesses = {cat: [] for cat in self.categories}
+        for uid, meta in series_meta.items():
+            desc = meta['desc'].lower()
+            thicknesses = meta['thicknesses']
+            if not thicknesses:
+                continue
+            median_t = statistics.median(thicknesses)
+            for category, cfg in self.categories.items():
+                for pattern in cfg['patterns']:
+                    if re.match(pattern, desc, re.IGNORECASE):
+                        category_thicknesses[category].append(median_t)
+                        logger.info(f"  Series '{meta['desc']}' → {category}: SliceThickness={median_t:.2f}mm")
+                        break
+
+        # Also store a representative DICOM file per category for nii2dcm reference
+        # Use the file from the middle of each series group (more representative than first/last)
+        category_dicom_files = {cat: [] for cat in self.categories}
+        for dcm_path in dicom_files:
+            try:
+                ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True)
+                desc = getattr(ds, 'SeriesDescription', '').strip().lower()
+                for category, cfg in self.categories.items():
+                    for pattern in cfg['patterns']:
+                        if re.match(pattern, desc, re.IGNORECASE):
+                            category_dicom_files[category].append(dcm_path)
+                            break
+            except Exception:
+                pass
+        for category, files in category_dicom_files.items():
+            if files:
+                mid = files[len(files) // 2]
+                self.category_ref_dicom[category] = mid
+                logger.info(f"  {category}: ref DICOM = {mid.name}")
+
+        for category, thicknesses in category_thicknesses.items():
+            if thicknesses:
+                detected = round(statistics.median(thicknesses), 2)
+                default = self.categories[category]['default_thickness']
+                self.detected_thickness[category] = detected
+                if abs(detected - default) > 0.3:
+                    logger.warning(
+                        f"  \u26a0\ufe0f  {category}: detected thickness {detected}mm differs from "
+                        f"default {default}mm \u2014 using detected value"
+                    )
+                else:
+                    logger.info(f"  \u2705 {category}: confirmed thickness {detected}mm")
+            else:
+                logger.info(f"  {category}: no thickness found in DICOM tags, will use default {self.categories[category]['default_thickness']}mm")
+
     def analyze_dicom_series(self):
         """Analyze DICOM files and group by series description patterns"""
         logger.info("Analyzing input files...")
@@ -234,6 +339,9 @@ class IntelligentSVRTKProcessor:
         dicom_files = list(self.input_folder.glob('**/*.dcm')) + list(self.input_folder.glob('**/*.DCM'))
         
         if dicom_files:
+            # Pre-pass: read slice thickness from DICOM tags before conversion
+            self.read_dicom_metadata(dicom_files)
+
             logger.info(f"Found {len(dicom_files)} DICOM files - converting to NIfTI format...")
             nifti_conversion_dir = self.temp_folder / "auto_converted_nifti"
             nifti_conversion_dir.mkdir(parents=True, exist_ok=True)
@@ -266,11 +374,15 @@ class IntelligentSVRTKProcessor:
         
         dcm2niix_cmd = [
             '/usr/local/bin/dcm2niix_openjpeg',
-            '-z', 'n',
-            '-f', '%d_%s_%t_%r',
+            '-z', 'n',           # uncompressed NIfTI (faster I/O during recon)
+            '-f', '%d_%s_%t_%r', # SeriesDesc_SeriesNum_Date_InstanceNum — unique per stack
             '-o', str(output_dir),
             '-v', '1',
-            '-b', 'n',
+            '-b', 'n',           # no BIDS sidecar
+            '-r', 'y',           # always reorder slices by ImagePositionPatient (correct geometry)
+            # NOTE: -s y (split 4D) intentionally omitted — Mercure delivers flat per-slice DICOMs
+            # which dcm2niix already treats as separate stacks. Adding -s y causes rename-only
+            # behaviour on flat DICOM inputs instead of NIfTI output.
             str(input_dir)
         ]
         
@@ -430,8 +542,9 @@ class IntelligentSVRTKProcessor:
             '/usr/local/bin/dcm2niix_openjpeg',
             '-o', str(nifti_output_dir),
             '-f', '%p_%t_%s',
-            '-z', 'y',
-            '-b', 'n',
+            '-z', 'n',           # uncompressed NIfTI — faster I/O during recon
+            '-b', 'n',           # no BIDS sidecar
+            '-r', 'y',           # reorder slices by ImagePositionPatient
             str(temp_dicom_dir)
         ]
         
@@ -482,13 +595,40 @@ class IntelligentSVRTKProcessor:
             for f in input_files:
                 logger.info(f"   - {f.name}")
             
+            # Determine slice thickness: use DICOM-detected value if available, else default
+            cat_cfg = self.categories[category]
+            detected_t = self.detected_thickness.get(category)
+            slice_thickness = detected_t if detected_t is not None else cat_cfg['default_thickness']
+            output_resolution = cat_cfg['output_resolution']
+
+            # Stack count advisory (no hard minimum — reconstruction proceeds regardless)
+            min_ideal = 4 if 'brain' in category else 5
+            if len(files) < min_ideal:
+                logger.warning(
+                    f"  ⚠️  {category}: only {len(files)} NIfTI stack(s) — ideal is ≥{min_ideal}. "
+                    f"Proceeding anyway; quality may be reduced."
+                )
+            elif len(files) < 7:
+                logger.warning(
+                    f"  ⚠️  {category}: {len(files)} stacks is marginal — ideal is ≥7. "
+                    f"Proceeding; quality may be reduced."
+                )
+
+            logger.info(
+                f"  {category}: thickness={slice_thickness}mm "
+                f"({'detected' if detected_t is not None else 'default'}), "
+                f"output_res={output_resolution}mm"
+            )
+
             reconstruction_jobs.append({
                 'category': category,
-                'description': self.categories[category]['description'],
+                'description': cat_cfg['description'],
                 'input_dir': input_dir,
                 'output_dir': output_dir,
-                'script': self.categories[category]['script'],
-                'file_count': len(files)
+                'script': cat_cfg['script'],
+                'file_count': len(files),
+                'slice_thickness': slice_thickness,
+                'output_resolution': output_resolution,
             })
         
         return reconstruction_jobs
@@ -555,21 +695,89 @@ class IntelligentSVRTKProcessor:
         logger.info(f"Files: {job['file_count']}")
         logger.info(f"Working Dir: {unique_work_dir}")
         
-        # Create patched script command that overrides default_run_dir
-        patched_script = f"sed 's|default_run_dir=/home/tmp_proc|default_run_dir={unique_work_dir}|g' {script}"
-        
+        slice_thickness = job['slice_thickness']
+        output_resolution = job['output_resolution']
+        is_body = category in ('ssfsex_body', 'fiesta_body')
+
+        # SVRTK threads: ~25% of physical CPUs per job, min 2, max 8.
+        # On a 16C prod machine this gives 4 threads/job; on larger servers it scales up automatically.
+        _cpu_count = os.cpu_count() or 4
+        svrtk_threads = max(2, min(8, _cpu_count // 4))
+
+        # Build sed pipeline:
+        # 1. Always: redirect default_run_dir to unique temp dir (isolation for parallel jobs)
+        # 2. Body only: patch hardcoded SVRTK parameters for better clinical quality:
+        #    - iterations 2→4: two extra EM loops; SVRTK authors recommend 3-4 for body DSVR
+        #    - exclusion_ncc 0.45→0.55: exclude slices with NCC<0.55 (more aggressive motion rejection)
+        #    - exclusion_ssim 0.25→0.40: exclude slices with SSIM<0.40
+        #    - stacks-selection 11→15: allow up to 15 stacks instead of 11 (more data = better recon)
+        #    - lambda 0.018→0.014: default calibrated for 0.55T low-field; at 1.5T+ less smoothing needed
+        #    - cp 12 9→14 10: finer FFD control point grid captures respiratory motion more precisely
+        #    - lastIter 0.008→0.006: finer step size for final EM pass improves convergence
+        #    NOTE: -delta kept at default 110 (controls per-voxel EM weighting, not slice exclusion;
+        #          conservative default is fine for clinical body data)
+        sed_pipeline = f"sed 's|default_run_dir=/home/tmp_proc|default_run_dir={unique_work_dir}|g' {script}"
+        if is_body:
+            sed_pipeline += (
+                " | sed 's|-iterations 2 |-iterations 4 |g'"
+                " | sed 's|-exclusion_ncc 0.45 |-exclusion_ncc 0.55 |g'"
+                " | sed 's|-exclusion_ssim 0.25 |-exclusion_ssim 0.40 |g'"
+                " | sed 's|} 11 1 0.5|} 15 1 0.5|g'"
+                " | sed 's|-lambda 0.018 |-lambda 0.014 |g'"
+                " | sed 's|-cp 12 9 |-cp 14 10 |g'"
+                " | sed 's|-lastIter 0.008 |-lastIter 0.006 |g'"
+            )
+
         cmd = [
-            'bash', '-c', 
-            f"{patched_script} | bash -s -- {input_dir} {output_dir} 1 3.0 0.8 1"
+            'bash', '-c',
+            f"{sed_pipeline} | bash -s -- {input_dir} {output_dir} {svrtk_threads} {slice_thickness} {output_resolution} 1"
         ]
         
         logger.info(f"Command: {' '.join(cmd)}")
+        logger.info(f"Slice thickness: {job['slice_thickness']}mm | Output resolution: {job['output_resolution']}mm")
         logger.info("")
         
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
-            
-            # Always try to cleanup unique_work_dir regardless of success/failure
+            # Stream output in real-time so SVRTK progress is visible during long reconstructions
+            import threading
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # merge stderr into stdout for unified stream
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+            )
+
+            def _stream_output(pipe):
+                for line in iter(pipe.readline, ''):
+                    stripped = line.rstrip()
+                    if stripped:
+                        logger.info(f"  [SVRTK] {stripped}")
+                pipe.close()
+
+            reader_thread = threading.Thread(target=_stream_output, args=(proc.stdout,), daemon=True)
+            reader_thread.start()
+
+            try:
+                proc.wait(timeout=3600)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                reader_thread.join(timeout=5)
+                logger.error(f"❌ {description} reconstruction TIMED OUT after 1 hour")
+                for temp_dir in temp_dirs_to_cleanup:
+                    try:
+                        if os.path.exists(temp_dir):
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+                return False
+
+            reader_thread.join(timeout=10)
+            returncode = proc.returncode
+
+            # Always cleanup unique_work_dir
             for temp_dir in temp_dirs_to_cleanup:
                 try:
                     if os.path.exists(temp_dir):
@@ -577,20 +785,8 @@ class IntelligentSVRTKProcessor:
                         logger.debug(f"Cleaned up job temp dir: {temp_dir}")
                 except Exception as cleanup_e:
                     logger.warning(f"Could not clean job temp dir {temp_dir}: {cleanup_e}")
-            
-            if result.stdout:
-                logger.info("STDOUT:")
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        logger.info(f"  {line}")
-            
-            if result.stderr:
-                logger.info("STDERR:")
-                for line in result.stderr.split('\n'):
-                    if line.strip():
-                        logger.warning(f"  {line}")
-            
-            if result.returncode == 0:
+
+            if returncode == 0:
                 # Check for actual reconstruction outputs, not just exit code
                 expected_outputs = self.validate_reconstruction_outputs(category, output_dir)
                 if expected_outputs:
@@ -604,20 +800,8 @@ class IntelligentSVRTKProcessor:
                     logger.error("Process exited successfully but produced no valid reconstruction outputs")
                     return False
             else:
-                logger.error(f"❌ {description} reconstruction FAILED (exit code {result.returncode})")
+                logger.error(f"❌ {description} reconstruction FAILED (exit code {returncode})")
                 return False
-                
-        except subprocess.TimeoutExpired:
-            logger.error(f"❌ {description} reconstruction TIMED OUT after 1 hour")
-            # Cleanup on timeout
-            for temp_dir in temp_dirs_to_cleanup:
-                try:
-                    if os.path.exists(temp_dir):
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        logger.info(f"Cleaned up temp dir after timeout: {temp_dir}")
-                except:
-                    pass
-            return False
         except Exception as e:
             logger.error(f"❌ {description} reconstruction FAILED with exception: {e}")
             import traceback
@@ -661,7 +845,7 @@ class IntelligentSVRTKProcessor:
         logger.info(f"Selected DICOM reference file: {ref_dicom}")
         return ref_dicom
     
-    def convert_nifti_to_dicom(self, nifti_file, output_dir, ref_dicom_file=None, series_description=None):
+    def convert_nifti_to_dicom(self, nifti_file, output_dir, ref_dicom_file=None, series_description=None, output_resolution=None):
         """
         Convert NIfTI reconstruction to DICOM using nii2dcm.
         DicomMRI is imported at module level to ensure it is always in scope.
@@ -687,17 +871,53 @@ class IntelligentSVRTKProcessor:
                 ref_dicom_file=Path(ref_dicom_file) if ref_dicom_file else None,
             )
 
-            # Post-process to set series description
+            # Post-process output DICOM files to set correct clinical tags
             dicom_files = list(output_dir.glob('*.dcm'))
-            if dicom_files and series_description and PYDICOM_AVAILABLE:
-                logger.info(f"Post-processing {len(dicom_files)} DICOM files to set series description")
-                for dcm_file in dicom_files:
+            if dicom_files and PYDICOM_AVAILABLE:
+                logger.info(f"Post-processing {len(dicom_files)} DICOM files to set clinical tags")
+
+                # Read reference DICOM to steal a valid SeriesNumber offset and WindowCenter
+                ref_series_number = 900
+                if ref_dicom_file:
+                    try:
+                        ref_ds = pydicom.dcmread(str(ref_dicom_file), stop_before_pixels=True)
+                        ref_series_number = int(getattr(ref_ds, 'SeriesNumber', 900)) + 100
+                    except Exception:
+                        pass
+
+                # SVRTK final output is rescaled to int16 [0, 5000] by the shell scripts.
+                # Window/level: center=1250, width=3500 covers the full clinical useful range.
+                window_center = 1250
+                window_width = 3500
+
+                voxel_size_str = f"{output_resolution:.2f}" if output_resolution else "1.00"
+
+                for i, dcm_file in enumerate(sorted(dicom_files)):
                     try:
                         ds = pydicom.dcmread(str(dcm_file))
-                        ds.SeriesDescription = series_description
+
+                        # Series identity
+                        if series_description:
+                            ds.SeriesDescription = series_description
+                        ds.SeriesNumber = ref_series_number
+                        ds.ImageComments = "SVRTK Fetal MRI Reconstruction"
+                        ds.SoftwareVersions = "SVRTK v8"
+
+                        # Geometry tags — reflect the actual output voxel size
+                        if output_resolution is not None:
+                            ds.SliceThickness = float(output_resolution)
+                            ds.PixelSpacing = [float(output_resolution), float(output_resolution)]
+                            ds.SpacingBetweenSlices = float(output_resolution)
+
+                        # Window/level for PACS display — correct for SVRTK int16 [0,5000] output
+                        ds.WindowCenter = window_center
+                        ds.WindowWidth = window_width
+                        if hasattr(ds, 'WindowCenterWidthExplanation'):
+                            ds.WindowCenterWidthExplanation = 'SVRTK Default'
+
                         ds.save_as(str(dcm_file))
                     except Exception as fix_e:
-                        logger.warning(f"Could not fix series description in {dcm_file.name}: {fix_e}")
+                        logger.warning(f"Could not post-process tags in {dcm_file.name}: {fix_e}")
 
             dicom_files = list(output_dir.glob('*.dcm'))
             if dicom_files:
@@ -707,7 +927,8 @@ class IntelligentSVRTKProcessor:
                         test_ds = pydicom.dcmread(str(dicom_files[0]))
                         actual_desc = getattr(test_ds, 'SeriesDescription', '')
                         logger.info(f"Series description verified: '{actual_desc}'")
-                    except:
+                        logger.info(f"Window Center/Width: {getattr(test_ds, 'WindowCenter', '?')}/{getattr(test_ds, 'WindowWidth', '?')}")
+                    except Exception:
                         pass
                 return True
             else:
@@ -720,6 +941,321 @@ class IntelligentSVRTKProcessor:
             logger.error(traceback.format_exc())
             return False
     
+    def run_segmentation(self, job):
+        """
+        Run SVRTK segmentation on a completed reconstruction output.
+        Only FIESTA categories are segmented — SSFSEx is skipped because all
+        segmentation models (BOUNTI, body organs, lung lobes) are trained on
+        bSSFP/FIESTA data and produce unreliable results on SSFSEx contrast.
+
+        Brain categories: auto-brain-bounti-segmentation-fetal.sh  (19-label parcellation + BET mask)
+        Body  categories: auto-body-organ-segmentation.sh (10-label organs)
+                        + auto-lung-segmentation.sh       (5-label lung lobes)
+
+        Returns a list of dicts:
+          {'nifti_file': Path, 'seg_type': str, 'category': str, 'description': str}
+        """
+        category = job['category']
+        output_dir = job['output_dir']
+        is_brain = 'brain' in category
+
+        if 'ssfsex' in category:
+            logger.info(
+                f"Segmentation skipped for {category}: SSFSEx contrast not supported by "
+                f"segmentation models (trained on FIESTA/bSSFP data only)"
+            )
+            return []
+
+        recon_nifti_name = 'reo-SVR-output-brain.nii.gz' if is_brain else 'reo-DSVR-output-body.nii.gz'
+        recon_nifti = output_dir / recon_nifti_name
+
+        if not recon_nifti.exists():
+            logger.warning(
+                f"Segmentation skipped for {category}: reconstruction output not found: {recon_nifti}"
+            )
+            return []
+
+        # Create a dedicated input folder with just the reconstruction NIfTI
+        seg_input_dir = self.temp_folder / f"seg_input_{category}"
+        seg_input_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(recon_nifti, seg_input_dir / recon_nifti.name)
+
+        # Source label for PACS series description (SSFSEx vs FIESTA)
+        src_label = 'SSFSEx' if 'ssfsex' in category else 'FIESTA'
+
+        if is_brain:
+            scripts_to_run = [
+                (
+                    '/home/auto-proc-svrtk/scripts/auto-brain-bounti-segmentation-fetal.sh',
+                    'brain_bounti',
+                    f'SVRTK BOUNTI Brain Parcellation ({src_label})',
+                ),
+            ]
+        else:
+            # Body organ segmentation removed — only lung lobes retained per clinical review
+            scripts_to_run = [
+                (
+                    '/home/auto-proc-svrtk/scripts/auto-lung-segmentation.sh',
+                    'lung',
+                    f'SVRTK Lung Lobe Segmentation ({src_label})',
+                ),
+            ]
+
+        seg_results = []
+        import threading as _threading
+
+        for script, seg_type, description in scripts_to_run:
+            seg_output_dir = output_dir / f'seg_{seg_type}'
+            seg_output_dir.mkdir(parents=True, exist_ok=True)
+
+            unique_work_dir = (
+                f"/tmp/tmp_seg_{category}_{seg_type}_{int(time.time() * 1000000) % 1000000}_{os.getpid()}"
+            )
+
+            sed_cmd = (
+                f"sed 's|default_run_dir=/home/tmp_proc|default_run_dir={unique_work_dir}|g' {script}"
+            )
+            cmd = ['bash', '-c', f"{sed_cmd} | bash -s -- {seg_input_dir} {seg_output_dir}"]
+
+            logger.info(f"")
+            logger.info(f"Starting {seg_type} segmentation for {category}...")
+            logger.info(f"  Input:  {seg_input_dir}")
+            logger.info(f"  Output: {seg_output_dir}")
+            logger.info(f"  Workdir: {unique_work_dir}")
+
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                )
+
+                def _stream(pipe):
+                    for line in iter(pipe.readline, ''):
+                        stripped = line.rstrip()
+                        if stripped:
+                            logger.info(f"[seg:{seg_type}] {stripped}")
+
+                reader = _threading.Thread(target=_stream, args=(proc.stdout,), daemon=True)
+                reader.start()
+                proc.wait()
+                reader.join(timeout=5)
+
+                if proc.returncode != 0:
+                    logger.error(
+                        f"❌ {seg_type} segmentation failed (exit code {proc.returncode}) for {category}"
+                    )
+                    continue
+
+                output_niftis = (
+                    list(seg_output_dir.glob('*.nii.gz')) + list(seg_output_dir.glob('*.nii'))
+                )
+
+                if not output_niftis:
+                    logger.error(f"❌ No segmentation output files found in {seg_output_dir}")
+                    continue
+
+                logger.info(
+                    f"✅ {seg_type} segmentation complete — {len(output_niftis)} output file(s)"
+                )
+                for nifti in output_niftis:
+                    # BET mask and BOUNTI-19 have distinct filenames; give each its own description
+                    if seg_type == 'brain_bounti' and '-mask-bet-1' in nifti.name:
+                        nifti_desc = f'SVRTK Brain BET Mask ({src_label})'
+                    else:
+                        nifti_desc = description
+                    seg_results.append({
+                        'nifti_file':  nifti,
+                        'seg_type':    seg_type,
+                        'category':    category,
+                        'description': nifti_desc,
+                    })
+
+            except Exception as exc:
+                logger.error(f"❌ {seg_type} segmentation error for {category}: {exc}")
+                import traceback
+                logger.error(traceback.format_exc())
+            finally:
+                # Clean up unique work dir
+                try:
+                    if os.path.isdir(unique_work_dir):
+                        shutil.rmtree(unique_work_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+        return seg_results
+
+    def convert_segmentations_to_dicom(self, seg_results, reconstruction_jobs, original_dicom_files):
+        """
+        Convert segmentation label-map NIfTIs to DICOM series.
+
+        Each segmentation output is written as a separate series.  Window/level is set
+        to display all integer label values; SeriesNumber is offset by 200+ from the
+        reconstruction ref so the series appear after reconstructions in PACS.
+        """
+        if not NII2DCM_AVAILABLE or not PYDICOM_AVAILABLE:
+            logger.warning("nii2dcm/pydicom not available — skipping segmentation DICOM conversion")
+            return []
+
+        if not seg_results:
+            return []
+
+        logger.info("=" * 80)
+        logger.info("CONVERTING SEGMENTATION OUTPUTS TO DICOM")
+        logger.info("=" * 80)
+
+        # Build category → ref_dicom mapping from reconstruction jobs
+        job_ref_map = {}
+        for job in reconstruction_jobs:
+            job_ref_map[job['category']] = self.category_ref_dicom.get(
+                job['category'],
+                self.determine_reference_dicom(original_dicom_files),
+            )
+
+        # Window/level presets for each label-map type
+        wl_presets = {
+            'brain_bounti': (10, 20),   # 19 labels → W=20, C=10
+            'body_organ':   (5,  10),   # 10 labels → W=10, C=5
+            'lung':         (3,   6),   # 5  labels → W=6,  C=3
+        }
+        # SeriesNumber offset from ref (reconstruction already uses +100)
+        seg_series_offset = {
+            'brain_bounti': 200,
+            'body_organ':   210,
+            'lung':         220,
+        }
+
+        successful = []
+        for idx, seg in enumerate(seg_results):
+            nifti_file  = seg['nifti_file']
+            seg_type    = seg['seg_type']
+            category    = seg['category']
+            description = seg['description']
+
+            ref_dicom = job_ref_map.get(category)
+            dicom_output_dir = nifti_file.parent / f'dicom_{nifti_file.stem.replace(".", "_")}'
+
+            wc, ww = wl_presets.get(seg_type, (10, 20))
+            offset  = seg_series_offset.get(seg_type, 200) + idx
+
+            logger.info(f"Converting segmentation: {nifti_file.name} ({description})")
+
+            dicom_output_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                run_nii2dcm(
+                    Path(nifti_file),
+                    dicom_output_dir,
+                    dicom_type="MR",
+                    ref_dicom_file=Path(ref_dicom) if ref_dicom else None,
+                )
+            except Exception as exc:
+                logger.error(f"❌ nii2dcm failed for {nifti_file.name}: {exc}")
+                continue
+
+            dcm_files = list(dicom_output_dir.glob('*.dcm'))
+            if not dcm_files:
+                logger.error(f"❌ No DICOM output for segmentation {nifti_file.name}")
+                continue
+
+            # Post-process: set series description, W/L, SeriesNumber, comments
+            ref_series_number = offset + 900
+            if ref_dicom:
+                try:
+                    ref_ds = pydicom.dcmread(str(ref_dicom), stop_before_pixels=True)
+                    ref_series_number = int(getattr(ref_ds, 'SeriesNumber', 900)) + offset
+                except Exception:
+                    pass
+
+            for dcm_file in dcm_files:
+                try:
+                    ds = pydicom.dcmread(str(dcm_file))
+                    ds.SeriesDescription = description
+                    ds.SeriesNumber      = ref_series_number
+                    ds.ImageComments     = "SVRTK Fetal MRI Segmentation"
+                    ds.SoftwareVersions  = "SVRTK v8"
+                    ds.WindowCenter      = wc
+                    ds.WindowWidth       = ww
+                    if hasattr(ds, 'WindowCenterWidthExplanation'):
+                        ds.WindowCenterWidthExplanation = 'Segmentation Labels'
+                    ds.save_as(str(dcm_file))
+                except Exception as fix_e:
+                    logger.warning(f"Could not post-process seg DICOM {dcm_file.name}: {fix_e}")
+
+            logger.info(f"✅ Segmentation DICOM written: {len(dcm_files)} files → {dicom_output_dir}")
+            successful.append({
+                'seg_type':    seg_type,
+                'category':    category,
+                'description': description,
+                'dicom_dir':   dicom_output_dir,
+            })
+
+        logger.info(
+            f"Segmentation DICOM conversion complete: {len(successful)}/{len(seg_results)} successful"
+        )
+        return successful
+
+    def push_segmentations_to_orthanc(self, seg_dicom_results):
+        """
+        Push segmentation DICOM series directly to Orthanc via REST API.
+        Segmentation results are stored in Orthanc only — not dispatched to PACS.
+        """
+        if not seg_dicom_results:
+            return
+
+        import requests
+
+        orthanc_url  = os.environ.get('ORTHANC_URL', 'http://172.17.0.1:9010')
+        orthanc_user = os.environ.get('ORTHANC_ADMIN_USER', 'orthanc_admin')
+        orthanc_pass = os.environ.get('ORTHANC_ADMIN_PASS', '')
+        instances_url = f"{orthanc_url.rstrip('/')}/instances"
+
+        logger.info("=" * 80)
+        logger.info("PUSHING SEGMENTATION DICOMs TO ORTHANC (not PACS)")
+        logger.info("=" * 80)
+
+        total_pushed = 0
+        total_failed = 0
+
+        for seg in seg_dicom_results:
+            dicom_dir   = seg['dicom_dir']
+            description = seg['description']
+            dcm_files   = [f for f in dicom_dir.glob('*.dcm') if f.name != 'temp_ref.dcm']
+
+            if not dcm_files:
+                logger.warning(f"No DICOM files found in {dicom_dir} for '{description}'")
+                continue
+
+            logger.info(f"Pushing {len(dcm_files)} files for '{description}'...")
+            for dcm_file in dcm_files:
+                try:
+                    with open(dcm_file, 'rb') as fh:
+                        resp = requests.post(
+                            instances_url,
+                            data=fh.read(),
+                            headers={'Content-Type': 'application/dicom'},
+                            auth=(orthanc_user, orthanc_pass),
+                            timeout=30,
+                        )
+                    if resp.status_code in (200, 409):  # 409 = already exists, still fine
+                        total_pushed += 1
+                    else:
+                        logger.warning(
+                            f"Orthanc rejected {dcm_file.name}: HTTP {resp.status_code}"
+                        )
+                        total_failed += 1
+                except Exception as push_exc:
+                    logger.error(f"Failed to push {dcm_file.name} to Orthanc: {push_exc}")
+                    total_failed += 1
+
+            logger.info(f"  '{description}': {total_pushed} pushed, {total_failed} failed")
+
+        logger.info(
+            f"✅ Orthanc segmentation push complete: {total_pushed} files pushed, {total_failed} failed"
+        )
+
     def convert_reconstruction_outputs_to_dicom(self, reconstruction_jobs, original_dicom_files):
         """
         Convert ALL reconstruction outputs to DICOM only after all jobs have completed.
@@ -765,6 +1301,7 @@ class IntelligentSVRTKProcessor:
         for job in reconstruction_jobs:
             category = job['category']
             output_dir = job['output_dir']
+            output_resolution = job.get('output_resolution')
 
             cfg = category_config.get(category, {
                 'output_file': 'reo-SVR-output.nii.gz',
@@ -787,14 +1324,21 @@ class IntelligentSVRTKProcessor:
                 })
                 continue
 
+            # Use category-matched reference DICOM (brain ref for brain recon, body ref for body)
+            # Falls back to global ref_dicom if category-specific one not available
+            cat_ref_dicom = self.category_ref_dicom.get(category, ref_dicom)
+            if cat_ref_dicom and cat_ref_dicom != ref_dicom:
+                logger.info(f"  Using category-matched ref DICOM for {category}: {Path(cat_ref_dicom).name}")
+
             logger.info(f"Converting {category}: {expected_output}")
             dicom_output_dir = output_dir / 'dicom_series'
 
             success = self.convert_nifti_to_dicom(
                 expected_output,
                 dicom_output_dir,
-                ref_dicom,
-                series_description
+                cat_ref_dicom,
+                series_description,
+                output_resolution=output_resolution,
             )
 
             if success:
@@ -815,6 +1359,7 @@ class IntelligentSVRTKProcessor:
         """Copy reconstructed DICOM files from subdirectories to main output for Mercure dispatch"""
         logger.info("Copying reconstructed DICOM files to main output directory...")
         
+        # Only copy reconstruction dirs — segmentation DICOMs go directly to Orthanc, not PACS
         dicom_series_dirs = list(self.output_folder.glob('**/dicom_series'))
         
         if not dicom_series_dirs:
@@ -879,7 +1424,7 @@ class IntelligentSVRTKProcessor:
         self.cleanup_temp_directories()
         
         # Check available disk space to prevent task.json corruption
-        if not self.check_disk_space(required_gb=50):
+        if not self.check_disk_space(required_gb=30):
             logger.error("❌ Aborting due to insufficient disk space")
             logger.error("Low disk space can cause task.json corruption and dispatcher loops!")
             return False
@@ -912,8 +1457,13 @@ class IntelligentSVRTKProcessor:
         if len(reconstruction_jobs) > 1:
             logger.info(f"🚀 Running {len(reconstruction_jobs)} reconstructions in PARALLEL for maximum speed...")
             
-            # Use ProcessPoolExecutor for CPU-intensive SVRTK reconstructions
-            with ProcessPoolExecutor(max_workers=min(len(reconstruction_jobs), 4)) as executor:
+            # Concurrent jobs: 1 per 8 physical CPUs, capped at 4.
+            # On 16C prod: 2 concurrent × 4 threads = 8 threads peak, 8 cores free for MONAI.
+            # On larger servers this auto-scales without any code changes.
+            _cpu_count = os.cpu_count() or 4
+            _max_concurrent = max(1, min(len(reconstruction_jobs), _cpu_count // 8, 4))
+            logger.info(f"Running {_max_concurrent} concurrent reconstruction jobs ({_cpu_count} CPUs available)")
+            with ProcessPoolExecutor(max_workers=_max_concurrent) as executor:
                 # Submit all jobs
                 future_to_job = {executor.submit(self.run_svrtk_reconstruction, job): job 
                                 for job in reconstruction_jobs}
@@ -983,7 +1533,37 @@ class IntelligentSVRTKProcessor:
         else:
             logger.error("❌ No successful reconstructions - skipping DICOM conversion")
             dicom_success = False
-        
+
+        # Step 4.5: Segmentation — runs after ALL reconstructions and DICOM conversions are done.
+        # Runs on every successful reconstruction (all 4 categories independently).
+        # Failures are non-fatal: reconstruction results are already in the output regardless.
+        if successful_jobs:
+            logger.info(
+                f"Running segmentation on all {len(successful_jobs)} successful reconstruction(s): "
+                + ", ".join(j['category'] for j in successful_jobs)
+            )
+            all_seg_results = []
+            for job in successful_jobs:
+                try:
+                    seg_results_for_job = self.run_segmentation(job)
+                    all_seg_results.extend(seg_results_for_job)
+                except Exception as seg_exc:
+                    logger.error(
+                        f"⚠️  Segmentation error for {job['category']} (non-fatal): {seg_exc}"
+                    )
+
+            if all_seg_results and original_dicom_files:
+                try:
+                    seg_dicom_results = self.convert_segmentations_to_dicom(
+                        all_seg_results, successful_jobs, original_dicom_files
+                    )
+                    # Push segmentation DICOMs to Orthanc directly — not dispatched to PACS
+                    self.push_segmentations_to_orthanc(seg_dicom_results)
+                except Exception as conv_exc:
+                    logger.error(f"⚠️  Segmentation DICOM conversion error (non-fatal): {conv_exc}")
+            elif not all_seg_results:
+                logger.info("No segmentation outputs produced — skipping segmentation DICOM conversion")
+
         # Step 5: Generate summary report
         self.generate_summary_report(results)
         
