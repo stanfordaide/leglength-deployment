@@ -162,7 +162,7 @@
         "SVRTKFetalReconstruction": {
             "docker_tag": "mercure-svrtk-fetal:v8",
             "additional_volumes": "",
-            "environment": "",
+            "environment": "{\"ORTHANC_ADMIN_USER\": \"orthanc_admin\", \"ORTHANC_ADMIN_PASS\": \"helloaide123\"}",
             "docker_arguments": "",
             "settings": {},
             "contact": "amosinha@stanford.edu",
