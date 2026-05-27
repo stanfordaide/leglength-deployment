@@ -1,0 +1,133 @@
+# Prometheus Alert Rules — Bone Leg Length (BLL) Pipeline
+# psrplamradgpu01 / stanfordaide leglength-deployment
+
+groups:
+
+  # ===========================================================================
+  # BONE LEG LENGTH — AI PROCESSING
+  # ===========================================================================
+  - name: bll_processing
+    rules:
+
+      # Task stuck in processing — PROCESS_BEGIN fired but no COMPLETE after 5 min
+      - alert: LegLengthTaskStuck
+        expr: |
+          (time() - mercure_task_process_begin_timestamp{module="PediatricLegLength"}) > 300
+          unless mercure_task_process_complete_timestamp{module="PediatricLegLength"} > 0
+        for: 2m
+        labels:
+          severity: critical
+          module: PediatricLegLength
+        annotations:
+          summary: "Leg length task stuck in processing (>5 min)"
+          description: "A PediatricLegLength task started processing over 5 minutes ago with no PROCESS_COMPLETE event. Check mercure_worker logs."
+
+      # No AI output in Orthanc for an extended period during business hours
+      - alert: LegLengthNoOutputInOrthanc
+        expr: |
+          increase(orthanc_changes_total{change_type="NewSeries", description=~".*AI Measurements.*"}[2h]) == 0
+        for: 30m
+        labels:
+          severity: warning
+          module: PediatricLegLength
+        annotations:
+          summary: "No leg length AI Measurements series received in 2 hours"
+          description: "No new 'AI Measurements' SR series has appeared in Orthanc in the past 2 hours. Pipeline may be stalled."
+
+      # Mercure PediatricLegLength module container not seen
+      - alert: LegLengthModuleDown
+        expr: |
+          max_over_time(probe_success{job="mercure-blackbox"}[3m]) < 1
+        for: 3m
+        labels:
+          severity: critical
+          module: PediatricLegLength
+        annotations:
+          summary: "Mercure is unreachable — leg length processing stopped"
+          description: "Prometheus cannot reach Mercure. PediatricLegLength jobs cannot be dispatched."
+
+  # ===========================================================================
+  # STORAGE
+  # ===========================================================================
+  - name: storage
+    rules:
+
+      - alert: DiskSpaceWarning
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space low on {{ $labels.instance }}"
+          description: "Root disk is below 20% free ({{ $value | printf \"%.1f\" }}% remaining). Current usage is high — clean up old DICOM data."
+
+      - alert: DiskSpaceCritical
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space CRITICAL on {{ $labels.instance }}"
+          description: "Root disk below 10% free ({{ $value | printf \"%.1f\" }}% remaining). Processing will fail."
+
+  # ===========================================================================
+  # CONTAINERS
+  # ===========================================================================
+  - name: containers
+    rules:
+
+      - alert: MercureWorkerDown
+        expr: |
+          absent(container_last_seen{name=~"mercure_worker.*"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mercure worker container(s) are down"
+          description: "One or more mercure_worker containers have not been seen for 2 minutes."
+
+      - alert: OrthancDown
+        expr: |
+          max_over_time(probe_success{job="orthanc-blackbox"}[2m]) < 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Orthanc PACS is down"
+          description: "The Orthanc container has not been seen for 2 minutes. DICOM reception and dispatch will fail."
+
+      - alert: ContainerRestarting
+        expr: |
+          changes(container_start_time_seconds{container_label_com_docker_compose_service=~"orthanc|mercure.*"}[1h]) > 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} restarting frequently"
+          description: "{{ $labels.name }} has restarted {{ $value | printf \"%.0f\" }} times in the last hour."
+
+  # ===========================================================================
+  # INFRASTRUCTURE
+  # ===========================================================================
+  - name: infrastructure
+    rules:
+
+      - alert: HighDiskLoad
+        expr: node_load15 > 24
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 15-min load average on psrplamradgpu01"
+          description: "Load average is {{ $value | printf \"%.1f\" }} (threshold: 24 = 1.5x 16-core machine)."
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host memory usage above 90%"
+          description: "Memory usage is {{ $value | printf \"%.1f\" }}%. May impact Docker container performance."

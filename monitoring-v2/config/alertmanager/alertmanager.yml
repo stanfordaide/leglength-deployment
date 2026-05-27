@@ -1,0 +1,91 @@
+# Alertmanager configuration — Bone Leg Length Pipeline
+# Forwards alerts to Microsoft Teams via the teams_webhook.py receiver
+
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'severity', 'module']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: teams-default
+
+  routes:
+    # Explicit maintenance silence (set label maintenance=true in rule or via relabel)
+    - matchers:
+        - maintenance="true"
+      receiver: 'null'
+
+    # BLL-specific alerts always go to Teams regardless of severity
+    - match:
+        module: PediatricLegLength
+      receiver: teams-bll
+      repeat_interval: 2h
+
+    # Critical alerts — immediate, shorter repeat
+    - match:
+        severity: critical
+      receiver: teams-critical
+      repeat_interval: 1h
+
+    # Warning alerts — standard cadence
+    - match:
+        severity: warning
+      receiver: teams-warning
+      repeat_interval: 4h
+      mute_time_intervals: ['nightly-maintenance-window']
+
+receivers:
+  - name: 'null'
+
+  - name: teams-default
+    webhook_configs:
+      - url: 'http://teams-webhook:9099/'
+        send_resolved: true
+
+  - name: teams-critical
+    webhook_configs:
+      - url: 'http://teams-webhook:9099/'
+        send_resolved: true
+
+  - name: teams-warning
+    webhook_configs:
+      - url: 'http://teams-webhook:9099/'
+        send_resolved: true
+
+  - name: teams-bll
+    webhook_configs:
+      - url: 'http://teams-webhook:9099/'
+        send_resolved: true
+
+inhibit_rules:
+  # Suppress warning if critical already firing for same alert + instance
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname', 'instance']
+
+  # Suppress generic disk warning when critical disk alert is active
+  - source_match:
+      alertname: DiskSpaceCritical
+    target_match:
+      alertname: DiskSpaceWarning
+    equal: ['instance']
+
+time_intervals:
+  - name: nightly-maintenance-window
+    time_intervals:
+      - weekdays: ['monday:friday']
+        times:
+          - start_time: '00:00'
+            end_time: '06:00'
+      - weekdays: ['saturday']
+        times:
+          - start_time: '00:00'
+            end_time: '24:00'
+      - weekdays: ['sunday']
+        times:
+          - start_time: '00:00'
+            end_time: '24:00'
