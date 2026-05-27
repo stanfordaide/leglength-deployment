@@ -25,6 +25,7 @@ import subprocess
 import json
 import re
 import time
+import hashlib
 from pathlib import Path
 import logging
 from datetime import datetime
@@ -122,6 +123,98 @@ class IntelligentSVRTKProcessor:
         self.detected_thickness = {}
         # Per-category representative DICOM file for nii2dcm reference (populated in read_dicom_metadata)
         self.category_ref_dicom = {}
+
+        # Structured runtime artifacts for reconstruction/segmentation auditing.
+        self.processing_artifacts = {
+            'started_at': datetime.now().isoformat(),
+            'input_folder': str(self.input_folder),
+            'output_folder': str(self.output_folder),
+            'dicom_conversion': {},
+            'reconstruction_runs': [],
+            'dicom_conversions': [],
+            'segmentation_runs': [],
+            'segmentation_dicom_conversions': [],
+            'segmentation_orthanc_push': {},
+        }
+
+    def _write_processing_artifacts(self):
+        """Persist structured processing artifacts for post-run troubleshooting."""
+        try:
+            out_file = self.output_folder / 'processing_artifacts.json'
+            with open(out_file, 'w') as f:
+                json.dump(self.processing_artifacts, f, indent=2)
+        except Exception as exc:
+            logger.warning(f"Failed to write processing artifacts: {exc}")
+
+    def _hash_file(self, file_path):
+        """Compute SHA1 hash for a file in a streaming way."""
+        h = hashlib.sha1()
+        with open(file_path, 'rb') as f:
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return h.hexdigest()
+
+    def _build_deduplicated_dicom_tree(self, input_dir, dedup_root):
+        """
+        Build a per-series DICOM tree with duplicate SOPInstanceUID slices removed.
+        Returns an audit dictionary used for conversion diagnostics.
+        """
+        dedup_root.mkdir(parents=True, exist_ok=True)
+        all_dicoms = list(Path(input_dir).glob('**/*.dcm')) + list(Path(input_dir).glob('**/*.DCM'))
+
+        audit = {
+            'source_file_count': len(all_dicoms),
+            'unique_file_count': 0,
+            'duplicate_sop_skipped': 0,
+            'hash_duplicate_skipped': 0,
+            'read_errors': 0,
+            'series_count': 0,
+            'series_map': {},
+        }
+
+        seen_sop = set()
+        seen_hash = set()
+        fallback_series = 'unknown-series'
+
+        for idx, dcm_path in enumerate(all_dicoms):
+            try:
+                sop_uid = None
+                series_uid = fallback_series
+                if PYDICOM_AVAILABLE:
+                    ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True)
+                    sop_uid = str(getattr(ds, 'SOPInstanceUID', '')).strip() or None
+                    series_uid = str(getattr(ds, 'SeriesInstanceUID', '')).strip() or fallback_series
+
+                if sop_uid:
+                    if sop_uid in seen_sop:
+                        audit['duplicate_sop_skipped'] += 1
+                        continue
+                    seen_sop.add(sop_uid)
+                else:
+                    file_hash = self._hash_file(dcm_path)
+                    if file_hash in seen_hash:
+                        audit['hash_duplicate_skipped'] += 1
+                        continue
+                    seen_hash.add(file_hash)
+
+                safe_series_uid = re.sub(r'[^A-Za-z0-9_.-]', '_', series_uid)
+                series_dir = dedup_root / safe_series_uid
+                series_dir.mkdir(parents=True, exist_ok=True)
+                dest = series_dir / f"slice_{idx:06d}.dcm"
+                shutil.copy2(dcm_path, dest)
+
+                audit['series_map'].setdefault(safe_series_uid, 0)
+                audit['series_map'][safe_series_uid] += 1
+                audit['unique_file_count'] += 1
+
+            except Exception:
+                audit['read_errors'] += 1
+
+        audit['series_count'] = len(audit['series_map'])
+        return audit
         
     def read_task_json(self):
         """Read Mercure task.json configuration if available with race condition protection"""
@@ -371,39 +464,75 @@ class IntelligentSVRTKProcessor:
         """Automatically convert DICOM files to NIfTI using OpenJPEG-enabled dcm2niix"""
         logger.info("Starting automatic DICOM to NIfTI conversion...")
         output_dir.mkdir(parents=True, exist_ok=True)
-        
-        dcm2niix_cmd = [
-            '/usr/local/bin/dcm2niix_openjpeg',
-            '-z', 'n',           # uncompressed NIfTI (faster I/O during recon)
-            '-f', '%d_%s_%t_%r', # SeriesDesc_SeriesNum_Date_InstanceNum — unique per stack
-            '-o', str(output_dir),
-            '-v', '1',
-            '-b', 'n',           # no BIDS sidecar
-            '-r', 'y',           # always reorder slices by ImagePositionPatient (correct geometry)
-            # NOTE: -s y (split 4D) intentionally omitted — Mercure delivers flat per-slice DICOMs
-            # which dcm2niix already treats as separate stacks. Adding -s y causes rename-only
-            # behaviour on flat DICOM inputs instead of NIfTI output.
-            str(input_dir)
-        ]
-        
+
+        dedup_root = self.temp_folder / 'deduped_dicom_for_conversion'
+        if dedup_root.exists():
+            shutil.rmtree(dedup_root, ignore_errors=True)
+
+        audit = self._build_deduplicated_dicom_tree(input_dir, dedup_root)
+        self.processing_artifacts['dicom_conversion'] = audit
+        logger.info(
+            f"DICOM pre-conversion audit: {audit['source_file_count']} source, "
+            f"{audit['unique_file_count']} unique, {audit['duplicate_sop_skipped']} SOP duplicates skipped"
+        )
+
+        if audit['unique_file_count'] == 0:
+            logger.error("No unique DICOM files available after deduplication")
+            return False
+
+        conversion_results = []
         try:
-            logger.info(f"Running dcm2niix conversion: {' '.join(dcm2niix_cmd)}")
-            result = subprocess.run(dcm2niix_cmd, capture_output=True, text=True, timeout=600, encoding='utf-8', errors='replace')
-            
-            if result.returncode == 0:
-                nifti_files = list(output_dir.glob('*.nii*'))
-                if nifti_files:
-                    logger.info(f"✅ Successfully converted to {len(nifti_files)} NIfTI files")
-                    return True
-                else:
-                    logger.error("dcm2niix completed but no NIfTI files were created")
-                    logger.error(f"dcm2niix stdout: {result.stdout}")
+            for series_dir in sorted(dedup_root.iterdir()):
+                if not series_dir.is_dir():
+                    continue
+
+                dcm2niix_cmd = [
+                    '/usr/local/bin/dcm2niix_openjpeg',
+                    '-z', 'n',
+                    '-f', '%p_%t_%s_%r',
+                    '-o', str(output_dir),
+                    '-v', '1',
+                    '-b', 'n',
+                    '-r', 'y',
+                    str(series_dir),
+                ]
+
+                logger.info(f"Running dcm2niix conversion for series {series_dir.name}")
+                result = subprocess.run(
+                    dcm2niix_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    encoding='utf-8',
+                    errors='replace',
+                )
+
+                series_result = {
+                    'series': series_dir.name,
+                    'returncode': result.returncode,
+                    'naming_conflict_warnings': result.stdout.lower().count('naming conflict'),
+                }
+                conversion_results.append(series_result)
+
+                if result.returncode != 0:
+                    logger.error(f"dcm2niix failed for {series_dir.name} with return code {result.returncode}")
                     logger.error(f"dcm2niix stderr: {result.stderr}")
-                    return False
-            else:
-                logger.error(f"dcm2niix failed with return code {result.returncode}")
-                logger.error(f"dcm2niix stderr: {result.stderr}")
-                return False
+
+            nifti_files = list(output_dir.glob('*.nii*'))
+            audit['series_results'] = conversion_results
+            audit['nifti_file_count'] = len(nifti_files)
+            self.processing_artifacts['dicom_conversion'] = audit
+
+            audit_path = output_dir / 'dicom_conversion_audit.json'
+            with open(audit_path, 'w') as f:
+                json.dump(audit, f, indent=2)
+
+            if nifti_files:
+                logger.info(f"✅ Successfully converted to {len(nifti_files)} NIfTI files")
+                return True
+
+            logger.error("dcm2niix completed but no NIfTI files were created")
+            return False
                 
         except subprocess.TimeoutExpired:
             logger.error("dcm2niix conversion timed out after 10 minutes")
@@ -772,7 +901,14 @@ class IntelligentSVRTKProcessor:
                             shutil.rmtree(temp_dir, ignore_errors=True)
                     except Exception:
                         pass
-                return False
+                return {
+                    'category': category,
+                    'description': description,
+                    'success': False,
+                    'reason': 'timeout',
+                    'output_dir': str(output_dir),
+                    'expected_outputs': [],
+                }
 
             reader_thread.join(timeout=10)
             returncode = proc.returncode
@@ -794,14 +930,35 @@ class IntelligentSVRTKProcessor:
                     output_files = list(output_dir.glob('**/*'))
                     logger.info(f"Generated {len(output_files)} output files/folders")
                     logger.info(f"Validated expected outputs: {expected_outputs}")
-                    return True
+                    return {
+                        'category': category,
+                        'description': description,
+                        'success': True,
+                        'reason': 'ok',
+                        'output_dir': str(output_dir),
+                        'expected_outputs': expected_outputs,
+                    }
                 else:
                     logger.error(f"❌ {description} reconstruction FAILED - expected output files not found")
                     logger.error("Process exited successfully but produced no valid reconstruction outputs")
-                    return False
+                    return {
+                        'category': category,
+                        'description': description,
+                        'success': False,
+                        'reason': 'missing_outputs',
+                        'output_dir': str(output_dir),
+                        'expected_outputs': [],
+                    }
             else:
                 logger.error(f"❌ {description} reconstruction FAILED (exit code {returncode})")
-                return False
+                return {
+                    'category': category,
+                    'description': description,
+                    'success': False,
+                    'reason': f'exit_code_{returncode}',
+                    'output_dir': str(output_dir),
+                    'expected_outputs': [],
+                }
         except Exception as e:
             logger.error(f"❌ {description} reconstruction FAILED with exception: {e}")
             import traceback
@@ -814,7 +971,14 @@ class IntelligentSVRTKProcessor:
                         logger.info(f"Cleaned up temp dir after exception: {temp_dir}")
                 except:
                     pass
-            return False
+            return {
+                'category': category,
+                'description': description,
+                'success': False,
+                'reason': f'exception: {e}',
+                'output_dir': str(output_dir),
+                'expected_outputs': [],
+            }
     
     def determine_reference_dicom(self, dicom_files):
         """Determine which DICOM file to use as reference for metadata transfer"""
@@ -1255,6 +1419,7 @@ class IntelligentSVRTKProcessor:
         logger.info(
             f"✅ Orthanc segmentation push complete: {total_pushed} files pushed, {total_failed} failed"
         )
+        return {'total_pushed': total_pushed, 'total_failed': total_failed}
 
     def convert_reconstruction_outputs_to_dicom(self, reconstruction_jobs, original_dicom_files):
         """
@@ -1342,15 +1507,27 @@ class IntelligentSVRTKProcessor:
             )
 
             if success:
+                dicom_count = len(list(dicom_output_dir.glob('*.dcm')))
                 dicom_conversions.append({
                     'category': category,
                     'nifti_file': expected_output,
                     'dicom_dir': dicom_output_dir,
-                    'series_description': series_description
+                    'series_description': series_description,
+                    'success': True,
+                    'dicom_count': dicom_count,
                 })
                 logger.info(f"✅ {category} DICOM conversion successful")
             else:
                 logger.error(f"❌ {category} DICOM conversion failed")
+                dicom_conversions.append({
+                    'category': category,
+                    'nifti_file': expected_output,
+                    'dicom_dir': dicom_output_dir,
+                    'series_description': series_description,
+                    'success': False,
+                    'error': 'NIfTI to DICOM conversion failed',
+                    'dicom_count': 0,
+                })
                     
         logger.info(f"DICOM conversion complete: {len(dicom_conversions)}/{len(reconstruction_jobs)} successful")
         return dicom_conversions
@@ -1453,6 +1630,7 @@ class IntelligentSVRTKProcessor:
         # DICOM conversion only starts after all jobs are done
         results = []
         successful_jobs = []
+        reconstruction_details = []
 
         if len(reconstruction_jobs) > 1:
             logger.info(f"🚀 Running {len(reconstruction_jobs)} reconstructions in PARALLEL for maximum speed...")
@@ -1472,7 +1650,18 @@ class IntelligentSVRTKProcessor:
                 for future in as_completed(future_to_job):
                     job = future_to_job[future]
                     try:
-                        success = future.result()
+                        recon_result = future.result()
+                        if isinstance(recon_result, bool):
+                            recon_result = {
+                                'category': job['category'],
+                                'description': job['description'],
+                                'success': recon_result,
+                                'reason': 'legacy_bool_result',
+                                'output_dir': str(job['output_dir']),
+                                'expected_outputs': [],
+                            }
+                        success = recon_result.get('success', False)
+                        reconstruction_details.append(recon_result)
                         results.append((job['category'], success))
                         if success:
                             successful_jobs.append(job)
@@ -1486,10 +1675,24 @@ class IntelligentSVRTKProcessor:
             # Single job - run sequentially
             logger.info("Running single reconstruction job...")
             for job in reconstruction_jobs:
-                success = self.run_svrtk_reconstruction(job)
+                recon_result = self.run_svrtk_reconstruction(job)
+                if isinstance(recon_result, bool):
+                    recon_result = {
+                        'category': job['category'],
+                        'description': job['description'],
+                        'success': recon_result,
+                        'reason': 'legacy_bool_result',
+                        'output_dir': str(job['output_dir']),
+                        'expected_outputs': [],
+                    }
+                success = recon_result.get('success', False)
+                reconstruction_details.append(recon_result)
                 results.append((job['category'], success))
                 if success:
                     successful_jobs.append(job)
+
+        self.processing_artifacts['reconstruction_runs'] = reconstruction_details
+        self._write_processing_artifacts()
 
         # Log reconstruction summary before starting conversion
         logger.info("")
@@ -1504,14 +1707,26 @@ class IntelligentSVRTKProcessor:
 
         # Step 4: Convert ALL successful reconstructions to DICOM (only now, after all are done)
         dicom_success = True
+        original_dicom_files = list(self.input_folder.glob('**/*.dcm')) + list(self.input_folder.glob('**/*.DCM'))
         if successful_jobs:
-            original_dicom_files = list(self.input_folder.glob('**/*.dcm')) + list(self.input_folder.glob('**/*.DCM'))
-            
             if original_dicom_files:
                 dicom_conversions = self.convert_reconstruction_outputs_to_dicom(
                     successful_jobs,
                     original_dicom_files
                 )
+                self.processing_artifacts['dicom_conversions'] = [
+                    {
+                        'category': dc.get('category'),
+                        'nifti_file': str(dc.get('nifti_file')) if dc.get('nifti_file') else None,
+                        'dicom_dir': str(dc.get('dicom_dir')) if dc.get('dicom_dir') else None,
+                        'series_description': dc.get('series_description'),
+                        'success': dc.get('success', True),
+                        'error': dc.get('error'),
+                        'dicom_count': dc.get('dicom_count'),
+                    }
+                    for dc in dicom_conversions
+                ]
+                self._write_processing_artifacts()
                 
                 # Check if any DICOM conversions failed
                 failed_conversions = [conv for conv in dicom_conversions if not conv.get('success', True)]
@@ -1547,18 +1762,50 @@ class IntelligentSVRTKProcessor:
                 try:
                     seg_results_for_job = self.run_segmentation(job)
                     all_seg_results.extend(seg_results_for_job)
+                    self.processing_artifacts['segmentation_runs'].append({
+                        'category': job['category'],
+                        'success': True,
+                        'output_count': len(seg_results_for_job),
+                        'outputs': [
+                            {
+                                'nifti_file': str(item['nifti_file']),
+                                'seg_type': item['seg_type'],
+                                'description': item['description'],
+                            }
+                            for item in seg_results_for_job
+                        ],
+                    })
                 except Exception as seg_exc:
                     logger.error(
                         f"⚠️  Segmentation error for {job['category']} (non-fatal): {seg_exc}"
                     )
+                    self.processing_artifacts['segmentation_runs'].append({
+                        'category': job['category'],
+                        'success': False,
+                        'error': str(seg_exc),
+                        'output_count': 0,
+                    })
+
+            self._write_processing_artifacts()
 
             if all_seg_results and original_dicom_files:
                 try:
                     seg_dicom_results = self.convert_segmentations_to_dicom(
                         all_seg_results, successful_jobs, original_dicom_files
                     )
+                    self.processing_artifacts['segmentation_dicom_conversions'] = [
+                        {
+                            'seg_type': item.get('seg_type'),
+                            'category': item.get('category'),
+                            'description': item.get('description'),
+                            'dicom_dir': str(item.get('dicom_dir')) if item.get('dicom_dir') else None,
+                        }
+                        for item in seg_dicom_results
+                    ]
                     # Push segmentation DICOMs to Orthanc directly — not dispatched to PACS
-                    self.push_segmentations_to_orthanc(seg_dicom_results)
+                    push_result = self.push_segmentations_to_orthanc(seg_dicom_results)
+                    self.processing_artifacts['segmentation_orthanc_push'] = push_result or {}
+                    self._write_processing_artifacts()
                 except Exception as conv_exc:
                     logger.error(f"⚠️  Segmentation DICOM conversion error (non-fatal): {conv_exc}")
             elif not all_seg_results:
@@ -1566,6 +1813,8 @@ class IntelligentSVRTKProcessor:
 
         # Step 5: Generate summary report
         self.generate_summary_report(results)
+        self.processing_artifacts['completed_at'] = datetime.now().isoformat()
+        self._write_processing_artifacts()
         
         # Step 6: Aggressive cleanup of temp files and SVRTK directories
         logger.info("Cleaning up temporary files...")
@@ -1587,12 +1836,15 @@ class IntelligentSVRTKProcessor:
             logger.warning(f"Error during cleanup: {e}")
         
         all_reconstructions_success = all(success for _, success in results)
-        final_success = all_reconstructions_success and dicom_success
-        
-        if final_success:
+        has_dispatchable_reconstruction = len(successful_jobs) > 0
+        final_success = (all_reconstructions_success and dicom_success) or has_dispatchable_reconstruction
+
+        if all_reconstructions_success and dicom_success:
             logger.info("🎉 All reconstructions and DICOM conversions completed successfully!")
         elif all_reconstructions_success:
             logger.warning("⚠️ Reconstructions succeeded but DICOM conversion failed. Results available as NIfTI only.")
+        elif has_dispatchable_reconstruction:
+            logger.warning("⚠️ Partial reconstruction success: at least one reconstruction is complete and dispatchable.")
         else:
             logger.error("❌ Some reconstructions failed. Check individual logs for details.")
         
@@ -1618,6 +1870,22 @@ class IntelligentSVRTKProcessor:
         
         with open(report_path, 'w') as f:
             json.dump(summary, f, indent=2)
+
+        recon_log_path = self.output_folder / 'reconstruction_run_log.json'
+        with open(recon_log_path, 'w') as f:
+            json.dump(self.processing_artifacts.get('reconstruction_runs', []), f, indent=2)
+
+        seg_log_path = self.output_folder / 'segmentation_run_log.json'
+        with open(seg_log_path, 'w') as f:
+            json.dump(
+                {
+                    'segmentation_runs': self.processing_artifacts.get('segmentation_runs', []),
+                    'segmentation_dicom_conversions': self.processing_artifacts.get('segmentation_dicom_conversions', []),
+                    'segmentation_orthanc_push': self.processing_artifacts.get('segmentation_orthanc_push', {}),
+                },
+                f,
+                indent=2,
+            )
         
         logger.info(f"Summary report saved to: {report_path}")
 
