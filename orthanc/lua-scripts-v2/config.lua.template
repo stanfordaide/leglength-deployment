@@ -88,6 +88,8 @@ Config.MATCHING = {
         "EXTREMITY BILATERAL BONE LENGTH",    -- With spaces
         "EXTREMITY_BILATERAL_BONE_LENGTH",    -- With underscores (LPCH format)
         "BONE LENGTH",                        -- Shorter fallback
+        "FULL LEG",                           -- EOS/full leg variant (with spaces)
+        "FULL_LEG",                           -- EOS/full leg variant (with underscores)
     },
 
     CT_ABDOMEN_PATTERNS = {

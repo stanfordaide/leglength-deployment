@@ -50,7 +50,7 @@
     },
     "rules": {
         "LegLengthRule": {
-            "rule": "\"EXTREMITY BILATERAL BONE LENGTH\" in tags.StudyDescription",
+            "rule": "\"EXTREMITY BILATERAL BONE LENGTH\" in tags.StudyDescription or \"BONE LENGTH\" in tags.StudyDescription or \"FULL LEG\" in tags.StudyDescription or \"FULL_LEG\" in tags.StudyDescription",
             "target": [
                 "OrthancLPCH"
             ],
