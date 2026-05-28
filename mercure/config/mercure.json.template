@@ -167,7 +167,7 @@
         "SVRTKFetal": {
             "docker_tag": "mercure-svrtk-fetal:v8",
             "additional_volumes": "",
-            "environment": "",
+            "environment": "{\"ORTHANC_ADMIN_USER\": \"${ORTHANC_ADMIN_USER}\", \"ORTHANC_ADMIN_PASS\": \"${ORTHANC_ADMIN_PASS}\"}",
             "docker_arguments": "",
             "settings": {
                 "timeout": 3600,
