@@ -50,7 +50,7 @@
     },
     "rules": {
         "LegLengthRule": {
-            "rule": "\"EXTREMITY BILATERAL BONE LENGTH\" in tags.StudyDescription",
+            "rule": "\"EXTREMITY BILATERAL BONE LENGTH\" in tags.StudyDescription or \"BONE LENGTH\" in tags.StudyDescription or \"FULL LEG\" in tags.StudyDescription or \"FULL_LEG\" in tags.StudyDescription",
             "target": [
                 "OrthancLPCH"
             ],
@@ -167,7 +167,7 @@
         "SVRTKFetal": {
             "docker_tag": "mercure-svrtk-fetal:v8",
             "additional_volumes": "",
-            "environment": "",
+            "environment": "{\"ORTHANC_ADMIN_USER\": \"${ORTHANC_ADMIN_USER}\", \"ORTHANC_ADMIN_PASS\": \"${ORTHANC_ADMIN_PASS}\"}",
             "docker_arguments": "",
             "settings": {
                 "timeout": 3600,

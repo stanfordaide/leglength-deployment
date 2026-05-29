@@ -80,7 +80,7 @@
         "MODLINK" : ${MODALITY_MODLINK_JSON},
         "MODLINKTEST" : ${MODALITY_MODLINKTEST_JSON}
     },
-    "DicomModalitiesInDatabase" : true,
+    "DicomModalitiesInDatabase" : false,
     "DicomEchoChecksFind" : false,
   
     "OrthancPeers" : {},

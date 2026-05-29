@@ -108,7 +108,7 @@ end
 local function hasSVRTKResultMarker(instances)
     for _, instance in ipairs(instances or {}) do
         local seriesDesc = Utils.safeGet(instance, "SeriesDescription", "")
-        if Utils.containsIgnoreCase(seriesDesc, "SVRTK") then
+        if Utils.containsIgnoreCase(seriesDesc, "SVRTK") and Utils.containsIgnoreCase(seriesDesc, "Reconstruction") then
             Log.info("SVRTK result marker found", { check = "SeriesDescription", value = seriesDesc })
             return true
         end
@@ -268,7 +268,7 @@ function Matcher.findSVRTKReconstructions(instances)
 
     for _, instance in ipairs(instances or {}) do
         local seriesDesc = Utils.safeGet(instance, "SeriesDescription", "")
-        if Utils.containsIgnoreCase(seriesDesc, "SVRTK") then
+        if Utils.containsIgnoreCase(seriesDesc, "SVRTK") and Utils.containsIgnoreCase(seriesDesc, "Reconstruction") then
             table.insert(results, instance)
         end
     end
